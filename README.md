@@ -55,6 +55,8 @@ in production.
 - Open PARAMETERS to tune density, force, trails, and visual mode.
 - Use the toolbar to pause, reset, capture a PNG, toggle fullscreen, or hide
   the interface. Press `H` to show the interface and `Escape` to restore it.
+- Enable **DEBUG** beside the tracking control to show the camera diagnostics
+  and hand-landmark overlay; disable it with **DEBUG OFF** when finished.
 
 When the experience opens, the browser requests webcam permission. If permission
 is denied or a camera is unavailable, pointer interaction remains available.

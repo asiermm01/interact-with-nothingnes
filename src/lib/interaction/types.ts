@@ -36,6 +36,19 @@ export interface HandObservation {
   handedness?: string;
 }
 
+export interface HandTrackingDiagnostics {
+  cameraPermission: "unknown" | "granted" | "denied" | "unavailable";
+  videoReady: boolean;
+  videoWidth: number;
+  videoHeight: number;
+  modelLoaded: boolean;
+  detectionActive: boolean;
+  detectionFrames: number;
+  lastDetectionAt: number | null;
+  hands: HandObservation[];
+  error: string;
+}
+
 export interface DetectedHand {
   center: Point2D;
   indexTip: Point2D;

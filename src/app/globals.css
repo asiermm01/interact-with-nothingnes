@@ -97,6 +97,10 @@ button {
   transition: opacity 180ms ease, visibility 180ms ease;
 }
 
+.camera-preview[data-debug="true"] {
+  overflow: visible;
+}
+
 .camera-preview[data-visible="false"] {
   visibility: hidden;
   opacity: 0;
@@ -113,6 +117,74 @@ button {
 
 .camera-preview[data-active="true"] .camera-feed {
   opacity: 1;
+}
+
+.camera-preview[data-debug="true"] .camera-feed {
+  object-fit: fill;
+}
+
+.hand-landmark-overlay {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.hand-landmark-overlay circle {
+  fill: var(--acid);
+  stroke: var(--void);
+  stroke-width: 0.003;
+}
+
+.hand-landmark-overlay .landmark-anchor {
+  fill: var(--yellow);
+}
+
+.hand-landmark-overlay text {
+  fill: var(--paper);
+  font-family: var(--mono);
+  font-size: 0.42rem;
+  paint-order: stroke;
+  stroke: var(--void);
+  stroke-width: 0.002;
+  text-anchor: start;
+}
+
+.tracking-diagnostics {
+  position: absolute;
+  z-index: 4;
+  top: calc(100% + 8px);
+  left: -1px;
+  display: grid;
+  width: min(320px, calc(100vw - 36px));
+  max-height: 42vh;
+  gap: 5px;
+  overflow: auto;
+  padding: 10px 12px;
+  border: 1px solid rgba(154, 217, 108, 0.4);
+  background: rgba(7, 7, 11, 0.94);
+  color: rgba(242, 240, 245, 0.82);
+  font-family: var(--mono);
+  font-size: 0.5rem;
+  line-height: 1.5;
+  pointer-events: auto;
+}
+
+.tracking-diagnostics p {
+  margin: 0 0 2px;
+  color: var(--acid);
+  letter-spacing: 0.1em;
+}
+
+.tracking-diagnostics span {
+  overflow-wrap: anywhere;
+}
+
+.tracking-diagnostics .diagnostic-error {
+  color: var(--yellow);
 }
 
 .camera-placeholder {
@@ -548,6 +620,12 @@ button {
     margin-left: 4px;
     padding: 0 9px;
     font-size: 0.48rem;
+  }
+
+  .debug-toggle {
+    margin-left: 0;
+    padding-inline: 5px;
+    font-size: 0.42rem;
   }
 
   .gesture-readout {

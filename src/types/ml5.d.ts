@@ -18,9 +18,10 @@ declare module "ml5" {
 
   interface HandPoseModel {
     ready: Promise<unknown>;
+    detect(video: HTMLVideoElement): Promise<HandPoseResult[]>;
     detectStart(
       video: HTMLVideoElement,
-      callback: (results: HandPoseResult[], error?: Error) => void,
+      callback: (results: HandPoseResult[]) => void,
     ): void;
     detectStop?(): void;
   }

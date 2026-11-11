@@ -13,6 +13,7 @@ import { HandTracker } from "@/lib/interaction/hand-tracker";
 import type {
   GestureName,
   HandObservation,
+  HandTrackingDiagnostics,
   InteractionFrame,
   ParticleCanvasHandle,
   TrackingStatus,
@@ -66,6 +67,19 @@ const statusLabels: Record<TrackingStatus, string> = {
   error: "TRACKING ERROR",
 };
 
+const initialDiagnostics: HandTrackingDiagnostics = {
+  cameraPermission: "unknown",
+  videoReady: false,
+  videoWidth: 0,
+  videoHeight: 0,
+  modelLoaded: false,
+  detectionActive: false,
+  detectionFrames: 0,
+  lastDetectionAt: null,
+  hands: [],
+  error: "",
+};
+
 export default function Experience() {
   const interactionRef = useRef<InteractionFrame>({ ...initialInteraction });
   const settingsRef = useRef<UserSettings>({ ...initialSettings });
@@ -76,6 +90,9 @@ export default function Experience() {
   const rootRef = useRef<HTMLElement>(null);
   const panelRef = useRef<HTMLElement>(null);
   const lastGestureRef = useRef<GestureName>("IDLE");
+  const lastDiagnosticsUpdateRef = useRef(0);
+  const diagnosticsRef = useRef(initialDiagnostics);
+  const debugEnabledRef = useRef(false);
   const [settings, setSettings] = useState(initialSettings);
   const [trackingStatus, setTrackingStatus] = useState<TrackingStatus>("idle");
   const [statusMessage, setStatusMessage] = useState("");
@@ -86,6 +103,9 @@ export default function Experience() {
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [isInterfaceVisible, setIsInterfaceVisible] = useState(true);
   const [hint, setHint] = useState("");
+  const [debugEnabled, setDebugEnabled] = useState(false);
+  const [diagnostics, setDiagnostics] = useState(initialDiagnostics);
+  debugEnabledRef.current = debugEnabled;
 
   const hasCameraImage =
     trackingStatus === "loading-model" ||
@@ -120,13 +140,32 @@ export default function Experience() {
     );
     if (status === "denied" || status === "unavailable" || status === "error") {
       trackerRef.current = null;
+      recognizerRef.current = new GestureRecognizer();
+      interactionRef.current = { ...initialInteraction };
+      lastGestureRef.current = "IDLE";
+      setActiveGesture("IDLE");
     }
   }, []);
 
   const startTracking = useCallback(async () => {
     const video = videoRef.current;
     if (!video || trackerRef.current) return;
-    const tracker = new HandTracker(video, updateHands, updateTrackingStatus);
+    diagnosticsRef.current = initialDiagnostics;
+    lastDiagnosticsUpdateRef.current = 0;
+    setDiagnostics(initialDiagnostics);
+    const tracker = new HandTracker(
+      video,
+      updateHands,
+      updateTrackingStatus,
+      (nextDiagnostics) => {
+        diagnosticsRef.current = nextDiagnostics;
+        if (!debugEnabledRef.current) return;
+        const now = performance.now();
+        if (now - lastDiagnosticsUpdateRef.current < 180) return;
+        lastDiagnosticsUpdateRef.current = now;
+        setDiagnostics(nextDiagnostics);
+      },
+    );
     trackerRef.current = tracker;
     const started = await tracker.start();
     if (!started) trackerRef.current = null;
@@ -277,6 +316,7 @@ export default function Experience() {
         aria-label="Live camera preview for local hand tracking"
         className="camera-preview"
         data-active={hasCameraImage}
+        data-debug={debugEnabled}
         data-visible={isInterfaceVisible}
       >
         <video
@@ -287,12 +327,78 @@ export default function Experience() {
           playsInline
           ref={videoRef}
         />
+        {debugEnabled && diagnostics.hands.length > 0 && (
+          <svg
+            aria-hidden="true"
+            className="hand-landmark-overlay"
+            preserveAspectRatio="none"
+            viewBox="0 0 1 1"
+          >
+            {diagnostics.hands.map((hand, handIndex) => (
+              <g key={`${hand.handedness ?? "hand"}-${handIndex}`}>
+                {hand.keypoints.map((point) => {
+                  const isAnchor =
+                    point.name === "wrist" ||
+                    point.name.endsWith("_finger_tip") ||
+                    point.name === "thumb_tip";
+                  return (
+                    <g key={point.name}>
+                      <circle
+                        className={isAnchor ? "landmark-anchor" : "landmark-point"}
+                        cx={point.x}
+                        cy={point.y}
+                        r={isAnchor ? 0.012 : 0.006}
+                      />
+                      {isAnchor && (
+                        <text x={point.x + 0.012} y={point.y - 0.012}>
+                          {point.name.replace("_finger", "")}
+                        </text>
+                      )}
+                    </g>
+                  );
+                })}
+              </g>
+            ))}
+          </svg>
+        )}
         {!hasCameraImage && (
           <span className="camera-placeholder">
             {trackingStatus === "requesting" ? "CONNECTING" : "CAMERA OFF"}
           </span>
         )}
         <figcaption>{hasCameraImage ? "LIVE INPUT · LOCAL ONLY" : "CAMERA PREVIEW"}</figcaption>
+        {debugEnabled && (
+          <div className="tracking-diagnostics" aria-live="polite">
+            <p>TRACKING DIAGNOSTICS</p>
+            <span>Camera permission: {diagnostics.cameraPermission}</span>
+            <span>
+              Video: {diagnostics.videoReady ? "ready" : "waiting"} ·{" "}
+              {diagnostics.videoWidth} × {diagnostics.videoHeight} · readyState{" "}
+              {videoRef.current?.readyState ?? 0}
+            </span>
+            <span>HandPose model: {diagnostics.modelLoaded ? "loaded" : "loading"}</span>
+            <span>
+              Inference: {diagnostics.detectionActive ? "active" : "stopped"} ·{" "}
+              {diagnostics.detectionFrames} frames
+              {diagnostics.lastDetectionAt
+                ? ` · ${Math.max(0, Math.round((Date.now() - diagnostics.lastDetectionAt) / 1000))}s ago`
+                : ""}
+            </span>
+            <span>Detected hands: {diagnostics.hands.length}</span>
+            {diagnostics.hands.map((hand, index) => (
+              <span key={`${hand.handedness ?? "hand"}-confidence-${index}`}>
+                Hand {index + 1}
+                {hand.handedness ? ` (${hand.handedness})` : ""}:{" "}
+                {Number.isFinite(hand.confidence)
+                  ? `${(hand.confidence * 100).toFixed(0)}% confidence`
+                  : "confidence unavailable"}{" "}
+                · {hand.keypoints.length} landmarks
+              </span>
+            ))}
+            <span>Gesture engine: {activeGesture}</span>
+            {diagnostics.error && <span className="diagnostic-error">{diagnostics.error}</span>}
+          </div>
+        )}
       </figure>
 
       {!isInterfaceVisible && (
@@ -337,6 +443,18 @@ export default function Experience() {
               type="button"
             >
               {isTracking ? "DISCONNECT" : "ENABLE HANDS"}
+            </button>
+            <button
+              aria-pressed={debugEnabled}
+              className="tracking-toggle debug-toggle"
+              onClick={() => {
+                const next = !debugEnabled;
+                if (next) setDiagnostics(diagnosticsRef.current);
+                setDebugEnabled(next);
+              }}
+              type="button"
+            >
+              DEBUG {debugEnabled ? "ON" : "OFF"}
             </button>
           </section>
 

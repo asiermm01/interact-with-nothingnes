@@ -60,6 +60,7 @@ const statusLabels: Record<TrackingStatus, string> = {
   "loading-model": "LOADING HANDPOSE",
   tracking: "HANDS PRESENT",
   searching: "SEARCHING FOR HANDS",
+  "no-hands": "NO HANDS DETECTED",
   denied: "CAMERA DECLINED",
   unavailable: "CAMERA UNAVAILABLE",
   error: "TRACKING ERROR",
@@ -86,6 +87,12 @@ export default function Experience() {
   const [isInterfaceVisible, setIsInterfaceVisible] = useState(true);
   const [hint, setHint] = useState("");
 
+  const hasCameraImage =
+    trackingStatus === "loading-model" ||
+    trackingStatus === "searching" ||
+    trackingStatus === "no-hands" ||
+    trackingStatus === "tracking";
+
   settingsRef.current = settings;
 
   const updateHands = useCallback((observations: HandObservation[]) => {
@@ -108,8 +115,12 @@ export default function Experience() {
       status === "requesting" ||
         status === "tracking" ||
         status === "searching" ||
+        status === "no-hands" ||
         status === "loading-model",
     );
+    if (status === "denied" || status === "unavailable" || status === "error") {
+      trackerRef.current = null;
+    }
   }, []);
 
   const startTracking = useCallback(async () => {
@@ -262,14 +273,27 @@ export default function Experience() {
         settingsRef={settingsRef}
       />
 
-      <video
-        aria-hidden="true"
-        autoPlay
-        className="camera-source"
-        muted
-        playsInline
-        ref={videoRef}
-      />
+      <figure
+        aria-label="Live camera preview for local hand tracking"
+        className="camera-preview"
+        data-active={hasCameraImage}
+        data-visible={isInterfaceVisible}
+      >
+        <video
+          aria-label="Mirrored live camera image used for hand tracking"
+          autoPlay
+          className="camera-feed"
+          muted
+          playsInline
+          ref={videoRef}
+        />
+        {!hasCameraImage && (
+          <span className="camera-placeholder">
+            {trackingStatus === "requesting" ? "CONNECTING" : "CAMERA OFF"}
+          </span>
+        )}
+        <figcaption>{hasCameraImage ? "LIVE INPUT · LOCAL ONLY" : "CAMERA PREVIEW"}</figcaption>
+      </figure>
 
       {!isInterfaceVisible && (
         <button
@@ -299,7 +323,13 @@ export default function Experience() {
             <span className={`tracking-light is-${trackingStatus}`} />
             <div>
               <p>{statusLabels[trackingStatus]}</p>
-              <span>{isTracking ? "LOCAL PROCESSING" : "MOVE TO INTERACT"}</span>
+              <span>
+                {trackingStatus === "no-hands"
+                  ? "MOVE ONE HAND INTO VIEW"
+                  : isTracking
+                    ? "LOCAL PROCESSING"
+                    : "MOVE TO INTERACT"}
+              </span>
             </div>
             <button
               className="tracking-toggle"

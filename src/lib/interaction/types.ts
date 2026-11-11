@@ -12,6 +12,7 @@ export type TrackingStatus =
   | "loading-model"
   | "tracking"
   | "searching"
+  | "no-hands"
   | "denied"
   | "unavailable"
   | "error";

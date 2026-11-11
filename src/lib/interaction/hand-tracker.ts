@@ -36,10 +36,17 @@ interface Ml5Module {
   default?: Ml5Api;
 }
 
+const MODEL_LOAD_TIMEOUT_MS = 30_000;
+const DETECTION_TIMEOUT_MS = 12_000;
+const SEARCH_HINT_DELAY_MS = 7_000;
+
 export class HandTracker implements HandTrackerHandle {
   private stream: MediaStream | null = null;
   private model: HandPoseModel | null = null;
   private active = false;
+  private detectionWatchdog: number | null = null;
+  private trackingStatus: TrackingStatus = "idle";
+  private searchStartedAt = 0;
 
   constructor(
     private readonly video: HTMLVideoElement,
@@ -47,15 +54,52 @@ export class HandTracker implements HandTrackerHandle {
     private readonly onStatus: (status: TrackingStatus, message?: string) => void,
   ) {}
 
+  private setStatus(status: TrackingStatus, message?: string) {
+    if (this.trackingStatus === status) return;
+    this.trackingStatus = status;
+    this.onStatus(status, message);
+  }
+
+  private watchForDetections() {
+    if (this.detectionWatchdog !== null) {
+      window.clearTimeout(this.detectionWatchdog);
+    }
+    this.detectionWatchdog = window.setTimeout(() => {
+      if (!this.active) return;
+      this.stop();
+      this.setStatus(
+        "error",
+        "HandPose stopped responding. Check the camera and internet connection, then try again.",
+      );
+    }, DETECTION_TIMEOUT_MS);
+  }
+
+  private async waitForModel(model: HandPoseModel) {
+    let timeout: number | undefined;
+    try {
+      await Promise.race([
+        model.ready,
+        new Promise<never>((_, reject) => {
+          timeout = window.setTimeout(
+            () => reject(new Error("HandPose is taking too long to load. Check your internet connection and try again.")),
+            MODEL_LOAD_TIMEOUT_MS,
+          );
+        }),
+      ]);
+    } finally {
+      if (timeout !== undefined) window.clearTimeout(timeout);
+    }
+  }
+
   async start(): Promise<boolean> {
     if (this.active) return true;
     this.active = true;
-    this.onStatus("requesting");
+    this.setStatus("requesting");
 
     try {
       if (!navigator.mediaDevices?.getUserMedia) {
         this.active = false;
-        this.onStatus("unavailable", "This browser does not support webcam access.");
+        this.setStatus("unavailable", "This browser does not support webcam access.");
         return false;
       }
 
@@ -76,7 +120,7 @@ export class HandTracker implements HandTrackerHandle {
 
       this.video.srcObject = this.stream;
       await this.video.play();
-      this.onStatus("loading-model");
+      this.setStatus("loading-model");
 
       const imported = (await import("ml5")) as Ml5Module;
       const ml5 = imported.handPose ? imported : imported.default;
@@ -84,15 +128,18 @@ export class HandTracker implements HandTrackerHandle {
 
       const model = await ml5.handPose({ maxHands: 2, flipped: true });
       this.model = model;
-      await model.ready;
+      await this.waitForModel(model);
       if (!this.active) {
         model.detectStop?.();
         return false;
       }
 
-      this.onStatus("searching");
+      this.searchStartedAt = performance.now();
+      this.setStatus("searching");
+      this.watchForDetections();
       model.detectStart(this.video, (results) => {
         if (!this.active) return;
+        this.watchForDetections();
         const hands = results
           .filter((result) => Array.isArray(result.keypoints))
           .map((result) => ({
@@ -107,21 +154,26 @@ export class HandTracker implements HandTrackerHandle {
             })),
           }));
         this.onHands(hands);
-        this.onStatus(hands.length > 0 ? "tracking" : "searching");
+        if (hands.length > 0) {
+          this.setStatus("tracking");
+        } else {
+          const waitingTooLong = performance.now() - this.searchStartedAt >= SEARCH_HINT_DELAY_MS;
+          this.setStatus(waitingTooLong ? "no-hands" : "searching");
+        }
       });
       return true;
     } catch (error) {
       this.stop();
       if (error instanceof DOMException && error.name === "NotAllowedError") {
-        this.onStatus("denied", "Camera permission was denied. Mouse interaction remains available.");
+        this.setStatus("denied", "Camera permission was denied. Mouse interaction remains available.");
         return false;
       }
       if (error instanceof DOMException && error.name === "NotFoundError") {
-        this.onStatus("unavailable", "No camera was found. Mouse interaction remains available.");
+        this.setStatus("unavailable", "No camera was found. Mouse interaction remains available.");
         return false;
       }
 
-      this.onStatus(
+      this.setStatus(
         "error",
         error instanceof Error ? error.message : "Hand tracking could not start.",
       );
@@ -135,6 +187,10 @@ export class HandTracker implements HandTrackerHandle {
     this.model = null;
     const stream = this.stream;
     this.stream = null;
+    if (this.detectionWatchdog !== null) {
+      window.clearTimeout(this.detectionWatchdog);
+      this.detectionWatchdog = null;
+    }
     try {
       model?.detectStop?.();
     } finally {

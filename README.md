@@ -1,7 +1,7 @@
 # Interact with Nothingness
 
-An independent Next.js and TypeScript project exploring the space between
-generative art, AI, and the blank canvas.
+Aplicación artística con IA. An independent Next.js and TypeScript project
+exploring the space between generative art, AI, and the blank canvas.
 
 ## Getting started
 

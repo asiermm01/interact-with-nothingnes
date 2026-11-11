@@ -18,20 +18,22 @@ declare module "ml5" {
 
   interface HandPoseModel {
     ready: Promise<unknown>;
-    detect(video: HTMLVideoElement): Promise<HandPoseResult[]>;
-    detectStart(
-      video: HTMLVideoElement,
-      callback: (results: HandPoseResult[]) => void,
-    ): void;
+    detect(image: HTMLVideoElement | HTMLCanvasElement): Promise<HandPoseResult[]>;
     detectStop?(): void;
   }
 
+  interface TensorFlowRuntime {
+    ready(): Promise<void>;
+    getBackend(): string;
+  }
+
   interface Ml5Api {
+    tf: TensorFlowRuntime;
     handPose(
       options: {
-        maxHands: number;
+        maxHands: 1;
         flipped: boolean;
-        modelType: "lite";
+        modelType: "full";
         runtime: "tfjs";
       },
     ): Promise<HandPoseModel> | HandPoseModel;

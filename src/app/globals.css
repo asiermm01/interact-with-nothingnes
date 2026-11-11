@@ -187,6 +187,28 @@ button {
   color: var(--yellow);
 }
 
+.diagnostic-test-button {
+  margin: 4px 0 0;
+  padding: 7px 8px;
+  font-size: 0.46rem;
+}
+
+.diagnostic-test-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.static-frame-preview {
+  display: none;
+  width: 100%;
+  height: auto;
+  border: 1px solid rgba(242, 240, 245, 0.2);
+}
+
+.static-frame-preview[data-captured="true"] {
+  display: block;
+}
+
 .camera-placeholder {
   position: absolute;
   inset: 0;

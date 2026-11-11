@@ -41,8 +41,12 @@ export interface HandTrackingDiagnostics {
   videoReady: boolean;
   videoWidth: number;
   videoHeight: number;
+  videoCurrentTime: number;
+  videoPaused: boolean;
+  videoFrameCount: number;
   modelLoaded: boolean;
   detectionActive: boolean;
+  inferenceBackend: string;
   detectionFrames: number;
   lastDetectionAt: number | null;
   hands: HandObservation[];

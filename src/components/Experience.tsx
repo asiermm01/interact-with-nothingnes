@@ -72,8 +72,12 @@ const initialDiagnostics: HandTrackingDiagnostics = {
   videoReady: false,
   videoWidth: 0,
   videoHeight: 0,
+  videoCurrentTime: 0,
+  videoPaused: true,
+  videoFrameCount: 0,
   modelLoaded: false,
   detectionActive: false,
+  inferenceBackend: "not initialized",
   detectionFrames: 0,
   lastDetectionAt: null,
   hands: [],
@@ -81,12 +85,19 @@ const initialDiagnostics: HandTrackingDiagnostics = {
 };
 
 export default function Experience() {
+  const loggedRenderRef = useRef(false);
+  if (!loggedRenderRef.current) {
+    console.info("[WEBCAM] Experience component rendered");
+    loggedRenderRef.current = true;
+  }
+
   const interactionRef = useRef<InteractionFrame>({ ...initialInteraction });
   const settingsRef = useRef<UserSettings>({ ...initialSettings });
   const engineRef = useRef<ParticleCanvasHandle | null>(null);
   const trackerRef = useRef<HandTracker | null>(null);
   const recognizerRef = useRef(new GestureRecognizer());
   const videoRef = useRef<HTMLVideoElement>(null);
+  const staticFrameCanvasRef = useRef<HTMLCanvasElement>(null);
   const rootRef = useRef<HTMLElement>(null);
   const panelRef = useRef<HTMLElement>(null);
   const lastGestureRef = useRef<GestureName>("IDLE");
@@ -105,6 +116,8 @@ export default function Experience() {
   const [hint, setHint] = useState("");
   const [debugEnabled, setDebugEnabled] = useState(false);
   const [diagnostics, setDiagnostics] = useState(initialDiagnostics);
+  const [staticTestResult, setStaticTestResult] = useState("");
+  const [staticFrameCaptured, setStaticFrameCaptured] = useState(false);
   debugEnabledRef.current = debugEnabled;
 
   const hasCameraImage =
@@ -149,7 +162,18 @@ export default function Experience() {
 
   const startTracking = useCallback(async () => {
     const video = videoRef.current;
-    if (!video || trackerRef.current) return;
+    console.info("[WEBCAM] startTracking called", {
+      videoElementAvailable: Boolean(video),
+      trackerAlreadyCreated: Boolean(trackerRef.current),
+    });
+    if (!video) {
+      console.error("[WEBCAM] Cannot start tracking: the video element is not mounted.");
+      return;
+    }
+    if (trackerRef.current) {
+      console.info("[WEBCAM] Tracking is already starting or active.");
+      return;
+    }
     diagnosticsRef.current = initialDiagnostics;
     lastDiagnosticsUpdateRef.current = 0;
     setDiagnostics(initialDiagnostics);
@@ -182,6 +206,28 @@ export default function Experience() {
     setStatusMessage("");
     setActiveGesture("IDLE");
   }, []);
+
+  const testCapturedFrame = async () => {
+    const canvas = staticFrameCanvasRef.current;
+    const tracker = trackerRef.current;
+    if (!canvas || !tracker) {
+      setStaticTestResult("Start camera tracking before testing a captured frame.");
+      return;
+    }
+
+    setStaticTestResult("Capturing the current camera frame and testing it…");
+    setStaticFrameCaptured(false);
+    try {
+      const count = await tracker.testCurrentFrame(canvas);
+      setStaticFrameCaptured(true);
+      setStaticTestResult(`Captured-frame inference found ${count} hand${count === 1 ? "" : "s"}.`);
+    } catch (error) {
+      console.error("[HANDPOSE STATIC TEST] Captured-frame inference failed:", error);
+      setStaticTestResult(
+        error instanceof Error ? `Static test failed: ${error.message}` : "Static test failed.",
+      );
+    }
+  };
 
   const changeSetting = <Key extends keyof UserSettings>(
     key: Key,
@@ -273,11 +319,20 @@ export default function Experience() {
 
   useEffect(() => {
     let cancelled = false;
+    console.info("[WEBCAM] Startup effect mounted");
     const startup = window.setTimeout(() => {
-      if (!cancelled) void startTracking();
+      if (cancelled) {
+        console.info("[WEBCAM] Startup was cancelled before camera initialization.");
+        return;
+      }
+      console.info("[WEBCAM] Startup effect invoking startTracking");
+      void startTracking().catch((error: unknown) => {
+        console.error("[WEBCAM] Unexpected startup failure:", error);
+      });
     }, 0);
 
     return () => {
+      console.info("[WEBCAM] Startup effect cleanup");
       cancelled = true;
       window.clearTimeout(startup);
       const tracker = trackerRef.current;
@@ -374,9 +429,15 @@ export default function Experience() {
             <span>
               Video: {diagnostics.videoReady ? "ready" : "waiting"} ·{" "}
               {diagnostics.videoWidth} × {diagnostics.videoHeight} · readyState{" "}
-              {videoRef.current?.readyState ?? 0}
+              {videoRef.current?.readyState ?? 0} · t=
+              {diagnostics.videoCurrentTime.toFixed(2)}s ·{" "}
+              {diagnostics.videoPaused ? "paused" : "playing"} ·{" "}
+              {diagnostics.videoFrameCount} advancing frames
             </span>
-            <span>HandPose model: {diagnostics.modelLoaded ? "loaded" : "loading"}</span>
+            <span>
+              HandPose model: {diagnostics.modelLoaded ? "ready" : "loading"} · full · one hand
+            </span>
+            <span>TensorFlow.js backend: {diagnostics.inferenceBackend}</span>
             <span>
               Inference: {diagnostics.detectionActive ? "active" : "stopped"} ·{" "}
               {diagnostics.detectionFrames} frames
@@ -397,6 +458,21 @@ export default function Experience() {
             ))}
             <span>Gesture engine: {activeGesture}</span>
             {diagnostics.error && <span className="diagnostic-error">{diagnostics.error}</span>}
+            <button
+              className="tracking-toggle diagnostic-test-button"
+              disabled={!diagnostics.detectionActive}
+              onClick={() => void testCapturedFrame()}
+              type="button"
+            >
+              CAPTURE FRAME + TEST
+            </button>
+            <canvas
+              aria-label="Captured camera frame sent to static HandPose inference"
+              className="static-frame-preview"
+              data-captured={staticFrameCaptured}
+              ref={staticFrameCanvasRef}
+            />
+            {staticTestResult && <span>{staticTestResult}</span>}
           </div>
         )}
       </figure>

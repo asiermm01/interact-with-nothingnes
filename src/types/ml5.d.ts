@@ -5,6 +5,7 @@ declare module "ml5" {
     z?: number;
     name: string;
     score?: number;
+    confidence?: number;
   }
 
   interface HandPoseResult {
@@ -19,14 +20,19 @@ declare module "ml5" {
     ready: Promise<unknown>;
     detectStart(
       video: HTMLVideoElement,
-      callback: (results: HandPoseResult[]) => void,
+      callback: (results: HandPoseResult[], error?: Error) => void,
     ): void;
     detectStop?(): void;
   }
 
   interface Ml5Api {
     handPose(
-      options: { maxHands: number; flipped: boolean },
+      options: {
+        maxHands: number;
+        flipped: boolean;
+        modelType: "lite";
+        runtime: "tfjs";
+      },
     ): Promise<HandPoseModel> | HandPoseModel;
   }
 

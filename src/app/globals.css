@@ -90,7 +90,7 @@ button {
   width: 180px;
   aspect-ratio: 4 / 3;
   overflow: hidden;
-  /* margin: 0; */
+  margin: 0;
   border: 1px solid rgba(242, 240, 245, 0.22);
   background: rgba(11, 10, 16, 0.76);
   pointer-events: none;
@@ -109,7 +109,6 @@ button {
   object-fit: cover;
   opacity: 0;
   transform: scaleX(-1);
-  margin: 100px auto 0 100px
 }
 
 .camera-preview[data-active="true"] .camera-feed {

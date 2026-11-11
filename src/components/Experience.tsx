@@ -325,7 +325,7 @@ export default function Experience() {
               <p>{statusLabels[trackingStatus]}</p>
               <span>
                 {trackingStatus === "no-hands"
-                  ? "MOVE ONE HAND INTO VIEW"
+                  ? "FULL HAND IN FRAME · PALM TO CAMERA"
                   : isTracking
                     ? "LOCAL PROCESSING"
                     : "MOVE TO INTERACT"}

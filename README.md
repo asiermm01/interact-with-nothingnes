@@ -1,7 +1,21 @@
 # ONE WITH NOTHINGNESS
 
-An interactive particle installation. The visual experience starts immediately;
-camera tracking is optional, and pointer interaction works without a camera.
+Instalación interactiva de partículas. La experiencia visual comienza directamente;
+el seguimiento con cámara es opcional y también se puede interactuar con el ratón.
+
+## Tecnologías y bibliotecas
+
+- **Next.js 16 (App Router)**: estructura de la aplicación y generación estática
+  para publicar la experiencia como archivos web.
+- **React 19**: componentes de interfaz y gestión de la experiencia interactiva.
+- **TypeScript 5**: desarrollo con tipado estático y comprobación de tipos estricta.
+- **p5.js**: motor de dibujo y simulación visual de partículas en el navegador.
+- **ml5.js HandPose**: detección de manos y puntos clave mediante la cámara web.
+- **TensorFlow.js**: ejecución del modelo HandPose en el navegador.
+- **GSAP**: transiciones y animaciones de la interfaz.
+- **WebGL**: aceleración gráfica utilizada por el lienzo de la experiencia.
+- **CSS**: estilos adaptables e identidad visual de la instalación.
+- **Node.js y npm**: entorno de ejecución y gestión de dependencias y scripts.
 
 ## Run locally
 
@@ -23,8 +37,9 @@ Build the static site first:
 npm run build
 ```
 
-Then open `out/index.html` in VS Code and select **Go Live**. The build creates
-the functional HTML entry point and its JavaScript/CSS assets in `out`.
+The build creates a formatted `index.html` and its `_next` assets directly in
+the project root. Open the project folder in VS Code and select **Go Live**;
+the root `index.html` is served automatically.
 Webcam access requires a secure context: localhost during development or HTTPS
 in production.
 

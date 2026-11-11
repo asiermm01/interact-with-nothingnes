@@ -6,6 +6,7 @@ interface Ml5Keypoint {
   z?: number;
   name: string;
   score?: number;
+  confidence?: number;
 }
 
 interface Ml5HandResult {
@@ -20,14 +21,19 @@ interface HandPoseModel {
   ready: Promise<unknown>;
   detectStart(
     video: HTMLVideoElement,
-    callback: (results: Ml5HandResult[]) => void,
+    callback: (results: Ml5HandResult[], error?: Error) => void,
   ): void;
   detectStop?(): void;
 }
 
 interface Ml5Api {
   handPose(
-    options: { maxHands: number; flipped: boolean },
+    options: {
+      maxHands: number;
+      flipped: boolean;
+      modelType: "lite";
+      runtime: "tfjs";
+    },
   ): Promise<HandPoseModel> | HandPoseModel;
 }
 
@@ -126,7 +132,12 @@ export class HandTracker implements HandTrackerHandle {
       const ml5 = imported.handPose ? imported : imported.default;
       if (!ml5?.handPose) throw new Error("The ml5 HandPose model could not be loaded.");
 
-      const model = await ml5.handPose({ maxHands: 2, flipped: true });
+      const model = await ml5.handPose({
+        maxHands: 2,
+        flipped: true,
+        modelType: "lite",
+        runtime: "tfjs",
+      });
       this.model = model;
       await this.waitForModel(model);
       if (!this.active) {
@@ -137,8 +148,13 @@ export class HandTracker implements HandTrackerHandle {
       this.searchStartedAt = performance.now();
       this.setStatus("searching");
       this.watchForDetections();
-      model.detectStart(this.video, (results) => {
+      model.detectStart(this.video, (results, error) => {
         if (!this.active) return;
+        if (error) {
+          this.stop();
+          this.setStatus("error", `Hand tracking failed: ${error.message}`);
+          return;
+        }
         this.watchForDetections();
         const hands = results
           .filter((result) => Array.isArray(result.keypoints))
@@ -150,7 +166,7 @@ export class HandTracker implements HandTrackerHandle {
               y: point.y / this.video.videoHeight,
               z: point.z,
               name: point.name,
-              score: point.score,
+              score: point.score ?? point.confidence,
             })),
           }));
         this.onHands(hands);

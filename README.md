@@ -49,14 +49,20 @@ in production.
 - The live camera preview appears beneath the title while tracking is active;
   frames are processed locally in your browser.
 - Use the tracking control to disconnect or resume ml5 HandPose tracking.
-- TRACE with an index finger, use an open palm to repel, and a fist to attract.
-- Move quickly for an IMPULSE; use two hands to STRETCH the field.
-- Pinch to COLLAPSE the field, then release for a burst.
-- Open PARAMETERS to tune density, force, trails, and visual mode.
+- Point with an index finger to draw persistent TRACE strokes. An open palm
+  repels particles; a fist attracts them.
+- Move either hand quickly for a directional IMPULSE. Use both hands to
+  STRETCH and rotate the particle field; pinch with either hand for a localized
+  COLLAPSE.
+- Hold both hands in fists to trigger CLEAR ALL after the configured hold time.
+  The toolbar reset also clears drawings.
+- Open PARAMETERS to tune the field, gesture thresholds, drawing appearance,
+  impulse sensitivity, and CLEAR ALL timing.
 - Use the toolbar to pause, reset, capture a PNG, toggle fullscreen, or hide
   the interface. Press `H` to show the interface and `Escape` to restore it.
-- Enable **DEBUG** beside the tracking control to show the camera diagnostics
-  and hand-landmark overlay; disable it with **DEBUG OFF** when finished.
+- Enable **DEBUG** beside the tracking control to show camera diagnostics,
+  both landmark sets, per-hand identity/gesture/position/velocity, force modes,
+  and recent interaction events; disable it with **DEBUG OFF** when finished.
 
 When the experience opens, the browser requests webcam permission. If permission
 is denied or a camera is unavailable, pointer interaction remains available.

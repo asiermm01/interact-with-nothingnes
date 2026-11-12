@@ -2,8 +2,11 @@ import type p5 from "p5";
 import type {
   InteractionFrame,
   ParticleCanvasHandle,
+  Point2D,
+  TraceStyle,
   UserSettings,
 } from "../interaction/types";
+import { INTERACTION_CONFIG } from "../interaction/config";
 
 const vertexShader = `
 precision highp float;
@@ -12,11 +15,17 @@ uniform mat4 uModelViewMatrix;
 uniform mat4 uProjectionMatrix;
 uniform float uPointSize;
 uniform float uTime;
+uniform float uFieldScale;
+uniform float uFieldRotation;
 varying float vPhase;
 varying vec3 vPosition;
 
 void main() {
-  vec4 position = uModelViewMatrix * vec4(aPosition, 1.0);
+  float cosine = cos(uFieldRotation);
+  float sine = sin(uFieldRotation);
+  mat2 rotation = mat2(cosine, sine, -sine, cosine);
+  vec2 fieldPosition = rotation * aPosition.xy * uFieldScale;
+  vec4 position = uModelViewMatrix * vec4(fieldPosition, aPosition.z, 1.0);
   gl_Position = uProjectionMatrix * position;
   gl_PointSize = uPointSize * (0.65 + 0.35 * sin(uTime + aPosition.z * 0.03));
   vPhase = aPosition.z;
@@ -151,6 +160,59 @@ interface ParticleBuffers {
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
 
+const drawStrokePoint = (
+  context: CanvasRenderingContext2D,
+  point: Point2D,
+  style: TraceStyle,
+  width: number,
+  height: number,
+) => {
+  const x = point.x * width;
+  const y = point.y * height;
+  context.save();
+  context.globalCompositeOperation = "lighter";
+  context.fillStyle = style.color;
+  context.shadowColor = style.color;
+  context.shadowBlur = style.glow;
+  context.globalAlpha = style.opacity;
+  context.beginPath();
+  context.arc(x, y, Math.max(0.8, style.thickness * 0.45), 0, Math.PI * 2);
+  context.fill();
+  context.restore();
+};
+
+const drawStrokeSegment = (
+  context: CanvasRenderingContext2D,
+  from: Point2D,
+  to: Point2D,
+  style: TraceStyle,
+  width: number,
+  height: number,
+) => {
+  context.save();
+  context.globalCompositeOperation = "lighter";
+  context.lineCap = "round";
+  context.lineJoin = "round";
+  context.strokeStyle = style.color;
+  context.shadowColor = style.color;
+  context.globalAlpha = style.opacity * 0.55;
+  context.lineWidth = style.thickness + style.glow * 0.25;
+  context.shadowBlur = style.glow;
+  context.beginPath();
+  context.moveTo(from.x * width, from.y * height);
+  context.lineTo(to.x * width, to.y * height);
+  context.stroke();
+  context.globalAlpha = style.opacity;
+  context.lineWidth = style.thickness;
+  context.shadowBlur = style.glow * 0.35;
+  context.beginPath();
+  context.moveTo(from.x * width, from.y * height);
+  context.lineTo(to.x * width, to.y * height);
+  context.stroke();
+  drawStrokePoint(context, to, { ...style, glow: style.glow * 0.5 }, width, height);
+  context.restore();
+};
+
 const modeColors = [
   [86, 32, 233],
   [160, 138, 191],
@@ -178,12 +240,17 @@ export async function createParticleEngine({
   let particleCount = settingsRef.current.density;
   let particles: ParticleBuffers;
   let field: p5.Graphics | null = null;
+  let drawingLayer: p5.Graphics | null = null;
   let paused = false;
   let destroyed = false;
   let backgroundProgram: p5.Shader;
   let particleProgram: p5.Shader;
   let instance: p5 | null = null;
   let lastTime = 0;
+  let lastStrokeVersion = -1;
+  let lastClearVersion = 0;
+  let clearingStartedAt: number | null = null;
+  const drawnStrokePoints = new Map<string, number>();
 
   const makeParticles = (count: number, width: number, height: number) => {
     const buffers: ParticleBuffers = {
@@ -213,6 +280,18 @@ export async function createParticleEngine({
   };
   particles = makeParticles(particleCount, 1, 1);
 
+  const resizeCanvases = (width: number, height: number) => {
+    if (!instance || destroyed) return;
+    instance.resizeCanvas(width, height, true);
+    field?.resizeCanvas(width, height);
+    field?.clear();
+    drawingLayer?.resizeCanvas(width, height);
+    drawingLayer?.clear();
+    drawnStrokePoints.clear();
+    lastStrokeVersion = -1;
+    particles = makeParticles(particleCount, width, height);
+  };
+
   const sketch = (p: p5) => {
     instance = p;
 
@@ -227,6 +306,8 @@ export async function createParticleEngine({
       p.frameRate(60);
       field = p.createGraphics(width, height);
       field.pixelDensity(1);
+      drawingLayer = p.createGraphics(width, height);
+      drawingLayer.pixelDensity(1);
       particles = makeParticles(particleCount, width, height);
       backgroundProgram = p.createShader(backgroundVertexShader, backgroundFragmentShader);
       particleProgram = p.createShader(vertexShader, fragmentShader);
@@ -261,8 +342,13 @@ export async function createParticleEngine({
       const state = interactionRef.current;
       const { intensity, persistence, density, mode } = settingsRef.current;
       const trailLayer = field;
+      const persistentLayer = drawingLayer;
       const activeHands = state.hands;
-      const focus = activeHands[0]?.center ?? state.mouse;
+      const focus =
+        activeHands.find((hand) => hand.handedness === "Right")?.center ??
+        activeHands[0]?.center ??
+        state.mouse;
+      const collapsing = !state.clearActive && activeHands.some((hand) => hand.isPinching);
 
       if (density !== particleCount) {
         particleCount = density;
@@ -291,9 +377,12 @@ export async function createParticleEngine({
       trailLayer.scale(state.universeScale, state.universeScale);
       trailLayer.translate(-width / 2, -height / 2);
 
-      const forceRange = Math.min(width, height) * 0.24;
+      const forceRange = Math.min(width, height) * INTERACTION_CONFIG.forces.rangeRatio;
       const forceRangeSquared = forceRange * forceRange;
-      const forceStrength = (intensity / 100) * 520;
+      const forceStrength =
+        (intensity / 100) *
+        INTERACTION_CONFIG.forces.strength *
+        settingsRef.current.interaction.forceMultiplier;
 
       for (let index = 0; index < particleCount; index += 1) {
         let x = particles.x[index];
@@ -307,12 +396,10 @@ export async function createParticleEngine({
         vx += Math.cos(angle) * 0.11 * delta;
         vy += Math.sin(angle) * 0.11 * delta;
 
-        for (let handIndex = 0; handIndex < activeHands.length; handIndex += 1) {
+        for (let handIndex = 0; !state.clearActive && handIndex < activeHands.length; handIndex += 1) {
           const hand = activeHands[handIndex];
-          const target =
-            state.gesture === "COLLAPSE" && hand.isPinching
-              ? hand.pinchPoint
-              : hand.center;
+          if (hand.forceMode === "none") continue;
+          const target = hand.isPinching ? hand.pinchPoint : hand.center;
           const dx = x - target.x * width;
           const dy = y - target.y * height;
           const distanceSquared = dx * dx + dy * dy;
@@ -320,13 +407,21 @@ export async function createParticleEngine({
 
           const distance = Math.sqrt(distanceSquared);
           const falloff = 1 - distance / forceRange;
-          const gravity = hand.isOpenPalm ? -1 : 1;
-          const collapse = state.gesture === "COLLAPSE" && hand.isPinching ? 2.6 : 1;
-          const force = (forceStrength * falloff * collapse * gravity * delta) / distance;
+          const direction = hand.forceMode === "repel" ? -1 : 1;
+          const gestureStrength = hand.isPinching
+            ? INTERACTION_CONFIG.forces.collapseMultiplier
+            : hand.isIndexPointing
+              ? INTERACTION_CONFIG.forces.traceMultiplier
+              : 1;
+          const force =
+            (forceStrength * falloff * gestureStrength * direction * delta) / distance;
           vx -= dx * force * 0.001;
           vy -= dy * force * 0.001;
-          particles.alpha[index] = state.gesture === "COLLAPSE" ? Math.max(0.12, particles.alpha[index] - 0.012) : 1;
+          if (hand.isPinching) {
+            particles.alpha[index] = Math.max(0.12, particles.alpha[index] - 0.012);
+          }
         }
+        if (!collapsing) particles.alpha[index] = 1;
 
         if (state.mouseActive && activeHands.length === 0) {
           const dx = x - state.mouse.x * width;
@@ -346,16 +441,28 @@ export async function createParticleEngine({
           const dx = x - wave.center.x * width;
           const dy = y - wave.center.y * height;
           const distance = Math.hypot(dx, dy);
-          const front = wave.age * Math.min(width, height) * 0.72;
-          const band = Math.exp(-Math.abs(distance - front) * 0.045);
+          const front =
+            wave.age *
+            Math.min(width, height) *
+            INTERACTION_CONFIG.shockwave.radialRatio;
+          const band = Math.exp(
+            -Math.abs(distance - front) * INTERACTION_CONFIG.shockwave.bandSharpness,
+          );
           if (distance > 1) {
-            const push = band * wave.strength * 16 * delta;
-            vx += (dx / distance) * push;
-            vy += (dy / distance) * push;
+            const push =
+              band * wave.strength * INTERACTION_CONFIG.shockwave.forceStrength * delta;
+            vx +=
+              ((dx / distance) * INTERACTION_CONFIG.shockwave.radialRatio +
+                wave.direction.x * INTERACTION_CONFIG.shockwave.directedRatio) *
+              push;
+            vy +=
+              ((dy / distance) * INTERACTION_CONFIG.shockwave.radialRatio +
+                wave.direction.y * INTERACTION_CONFIG.shockwave.directedRatio) *
+              push;
           }
         }
 
-        const maxSpeed = 80;
+        const maxSpeed = INTERACTION_CONFIG.forces.maximumSpeed;
         const damping = Math.pow(0.986, delta * 60);
         vx = clamp(vx * damping, -maxSpeed, maxSpeed);
         vy = clamp(vy * damping, -maxSpeed, maxSpeed);
@@ -383,16 +490,6 @@ export async function createParticleEngine({
         trailLayer.stroke(color[0], color[1], color[2], alpha);
         trailLayer.strokeWeight(particles.size[index]);
 
-        if (state.gesture === "TRACE" && state.tracePoints.length > 1) {
-          const trace = state.tracePoints[state.tracePoints.length - 1];
-          const dx = x / width - trace.x;
-          const dy = y / height - trace.y;
-          if (dx * dx + dy * dy < 0.003) {
-            trailLayer.stroke(154, 217, 108, 105);
-            trailLayer.strokeWeight(particles.size[index] + 0.5);
-          }
-        }
-
         trailLayer.point(x, y);
 
         if (index % 8 === 0 && index + 29 < particleCount) {
@@ -409,7 +506,31 @@ export async function createParticleEngine({
         }
       }
 
-      if (state.tracePoints.length > 1) {
+      for (let waveIndex = 0; waveIndex < state.shockwaves.length; waveIndex += 1) {
+        const wave = state.shockwaves[waveIndex];
+        const front =
+          wave.age *
+          Math.min(width, height) *
+          INTERACTION_CONFIG.shockwave.radialRatio;
+        trailLayer.noFill();
+        trailLayer.stroke(154, 217, 108, Math.min(115, wave.strength * 90));
+        trailLayer.strokeWeight(1 + wave.strength * 1.4);
+        trailLayer.ellipse(
+          wave.center.x * width,
+          wave.center.y * height,
+          front * 2,
+          front * 2,
+        );
+        trailLayer.line(
+          wave.center.x * width,
+          wave.center.y * height,
+          (wave.center.x + wave.direction.x * INTERACTION_CONFIG.shockwave.directionLength) *
+            width,
+          (wave.center.y + wave.direction.y * INTERACTION_CONFIG.shockwave.directionLength) *
+            height,
+        );
+      }
+      if (activeHands.length === 0 && state.tracePoints.length > 1) {
         trailLayer.noFill();
         trailLayer.stroke(154, 217, 108, 105);
         trailLayer.strokeWeight(1.1);
@@ -431,6 +552,8 @@ export async function createParticleEngine({
       p.shader(particleProgram);
       particleProgram.setUniform("uPointSize", Math.min(3.2, 1.8 + intensity * 0.012));
       particleProgram.setUniform("uTime", now);
+      particleProgram.setUniform("uFieldScale", state.universeScale);
+      particleProgram.setUniform("uFieldRotation", state.universeRotation);
       particleProgram.setUniform("uIntensity", intensity / 100);
       particleProgram.setUniform("uMode", mode === "monochrome" ? 2 : mode === "filament" ? 1 : 0);
       particleProgram.setUniform("uResolution", [
@@ -449,16 +572,73 @@ export async function createParticleEngine({
       p.endShape();
       p.resetShader();
       p.pop();
+
+      if (persistentLayer) {
+        if (state.clearVersion !== lastClearVersion) {
+          lastClearVersion = state.clearVersion;
+          clearingStartedAt = now;
+        }
+
+        if (clearingStartedAt !== null) {
+          const progress = clamp(
+            (now - clearingStartedAt) /
+              (INTERACTION_CONFIG.gestures.clearFadeMs / 1000),
+            0,
+            1,
+          );
+          if (progress >= 1) {
+            persistentLayer.clear();
+            drawnStrokePoints.clear();
+            lastStrokeVersion = -1;
+            clearingStartedAt = null;
+          }
+        } else if (state.strokeVersion !== lastStrokeVersion) {
+          const context = persistentLayer.drawingContext as CanvasRenderingContext2D;
+          for (const stroke of state.strokes) {
+            const drawnCount = drawnStrokePoints.get(stroke.id) ?? 0;
+            if (drawnCount === 0 && stroke.points[0]) {
+              drawStrokePoint(context, stroke.points[0], stroke.style, width, height);
+            }
+            for (let pointIndex = Math.max(1, drawnCount); pointIndex < stroke.points.length; pointIndex += 1) {
+              drawStrokeSegment(
+                context,
+                stroke.points[pointIndex - 1],
+                stroke.points[pointIndex],
+                stroke.style,
+                width,
+                height,
+              );
+            }
+            drawnStrokePoints.set(stroke.id, stroke.points.length);
+          }
+          lastStrokeVersion = state.strokeVersion;
+        }
+
+        if (clearingStartedAt !== null) {
+          const opacity = 1 - clamp(
+            (now - clearingStartedAt) /
+              (INTERACTION_CONFIG.gestures.clearFadeMs / 1000),
+            0,
+            1,
+          );
+          p.push();
+          p.tint(255, opacity * 255);
+          p.image(persistentLayer, -width / 2, -height / 2, width, height);
+          p.noTint();
+          p.pop();
+        } else {
+          p.push();
+          p.image(persistentLayer, -width / 2, -height / 2, width, height);
+          p.pop();
+        }
+      }
     };
 
     p.windowResized = () => {
       if (!instance || destroyed) return;
       const width = Math.max(container.clientWidth, window.innerWidth);
       const height = Math.max(container.clientHeight, window.innerHeight);
-      p.resizeCanvas(width, height, true);
-      field?.resizeCanvas(width, height);
-      field?.clear();
-      particles = makeParticles(particleCount, width, height);
+      resizeCanvases(width, height);
     };
   };
 
@@ -467,10 +647,7 @@ export async function createParticleEngine({
     const width = Math.max(container.clientWidth, window.innerWidth);
     const height = Math.max(container.clientHeight, window.innerHeight);
     if (instance.width !== width || instance.height !== height) {
-      instance.resizeCanvas(width, height, true);
-      field?.resizeCanvas(width, height);
-      field?.clear();
-      particles = makeParticles(particleCount, width, height);
+      resizeCanvases(width, height);
     }
   });
   resizeObserver.observe(container);
@@ -482,6 +659,7 @@ export async function createParticleEngine({
     instance?.remove();
     instance = null;
     field = null;
+    drawingLayer = null;
   };
 
   try {

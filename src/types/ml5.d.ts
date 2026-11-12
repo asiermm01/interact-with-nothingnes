@@ -31,7 +31,7 @@ declare module "ml5" {
     tf: TensorFlowRuntime;
     handPose(
       options: {
-        maxHands: 1;
+        maxHands: 2;
         flipped: boolean;
         modelType: "full";
         runtime: "tfjs";

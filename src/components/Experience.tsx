@@ -10,11 +10,16 @@ import {
 } from "react";
 import { GestureRecognizer } from "@/lib/interaction/gesture-recognition";
 import { HandTracker } from "@/lib/interaction/hand-tracker";
+import {
+  DEFAULT_USER_SETTINGS,
+  INTERACTION_TUNING_RANGES,
+} from "@/lib/interaction/config";
 import type {
   GestureName,
   HandObservation,
   HandTrackingDiagnostics,
   InteractionFrame,
+  InteractionTuning,
   ParticleCanvasHandle,
   TrackingStatus,
   UserSettings,
@@ -26,33 +31,34 @@ const ParticleCanvas = dynamic(() => import("./ParticleCanvas"), {
   loading: () => <div aria-hidden="true" className="canvas-loading" />,
 });
 
-const initialSettings: UserSettings = {
-  density: 1050,
-  intensity: 54,
-  persistence: 72,
-  mode: "nebula",
-};
-
 const initialInteraction: InteractionFrame = {
   hands: [],
+  tracking: [],
   mouse: { x: 0.5, y: 0.5 },
   mouseActive: false,
   mousePressed: false,
   gesture: "IDLE",
   tracePoints: [],
+  strokes: [],
+  strokeVersion: 0,
+  clearVersion: 0,
+  clearProgress: 0,
+  clearActive: false,
+  clearCooldownRemaining: 0,
+  events: [],
   shockwaves: [],
   universeScale: 1,
   universeRotation: 0,
-  intensity: 1,
 };
 
 const gestureLabels: Record<GestureName, string> = {
   IDLE: "Move to disturb the field",
-  TRACE: "TRACE · Index finger",
-  GRAVITY: "GRAVITY · Open / close your hand",
+  TRACE: "TRACE · Point with your index finger",
+  GRAVITY: "GRAVITY · Open palm repels · Fist attracts",
   IMPULSE: "IMPULSE · Move quickly",
-  STRETCH: "STRETCH · Move hands apart",
+  STRETCH: "STRETCH · Move both hands",
   COLLAPSE: "COLLAPSE · Pinch to gather",
+  "CLEAR ALL": "CLEAR ALL · Hold both fists",
 };
 
 const statusLabels: Record<TrackingStatus, string> = {
@@ -92,7 +98,7 @@ export default function Experience() {
   }
 
   const interactionRef = useRef<InteractionFrame>({ ...initialInteraction });
-  const settingsRef = useRef<UserSettings>({ ...initialSettings });
+  const settingsRef = useRef<UserSettings>({ ...DEFAULT_USER_SETTINGS });
   const engineRef = useRef<ParticleCanvasHandle | null>(null);
   const trackerRef = useRef<HandTracker | null>(null);
   const recognizerRef = useRef(new GestureRecognizer());
@@ -102,9 +108,10 @@ export default function Experience() {
   const panelRef = useRef<HTMLElement>(null);
   const lastGestureRef = useRef<GestureName>("IDLE");
   const lastDiagnosticsUpdateRef = useRef(0);
+  const lastDebugInteractionUpdateRef = useRef(0);
   const diagnosticsRef = useRef(initialDiagnostics);
   const debugEnabledRef = useRef(false);
-  const [settings, setSettings] = useState(initialSettings);
+  const [settings, setSettings] = useState(DEFAULT_USER_SETTINGS);
   const [trackingStatus, setTrackingStatus] = useState<TrackingStatus>("idle");
   const [statusMessage, setStatusMessage] = useState("");
   const [activeGesture, setActiveGesture] = useState<GestureName>("IDLE");
@@ -118,7 +125,26 @@ export default function Experience() {
   const [diagnostics, setDiagnostics] = useState(initialDiagnostics);
   const [staticTestResult, setStaticTestResult] = useState("");
   const [staticFrameCaptured, setStaticFrameCaptured] = useState(false);
+  const [handSummary, setHandSummary] = useState("NO HANDS DETECTED");
+  const [clearProgress, setClearProgress] = useState(0);
+  const [debugInteraction, setDebugInteraction] = useState<InteractionFrame | null>(null);
   debugEnabledRef.current = debugEnabled;
+  const handSummaryRef = useRef("");
+  const lastClearVersionRef = useRef(0);
+  const lastClearProgressUpdateRef = useRef(0);
+  const clearProgressRef = useRef(0);
+
+  const resetTrackingFrame = () => {
+    const current = interactionRef.current;
+    interactionRef.current = {
+      ...initialInteraction,
+      strokes: current.strokes,
+      strokeVersion: current.strokeVersion,
+      clearVersion: current.clearVersion,
+      universeScale: current.universeScale,
+      universeRotation: current.universeRotation,
+    };
+  };
 
   const hasCameraImage =
     trackingStatus === "loading-model" ||
@@ -129,16 +155,61 @@ export default function Experience() {
   settingsRef.current = settings;
 
   const updateHands = useCallback((observations: HandObservation[]) => {
-    const frame = recognizerRef.current.update(observations, performance.now());
+    const frame = recognizerRef.current.update(
+      observations,
+      performance.now(),
+      settingsRef.current.interaction,
+    );
     frame.mouse = interactionRef.current.mouse;
     frame.mouseActive = interactionRef.current.mouseActive;
     frame.mousePressed = interactionRef.current.mousePressed;
+    frame.tracePoints =
+      frame.hands.length === 0 ? interactionRef.current.tracePoints : [];
     interactionRef.current = frame;
     if (frame.gesture !== lastGestureRef.current && frame.gesture !== "IDLE") {
       setHint(gestureLabels[frame.gesture]);
     }
-    lastGestureRef.current = frame.gesture;
-    setActiveGesture(frame.gesture);
+    if (frame.clearVersion !== lastClearVersionRef.current) {
+      lastClearVersionRef.current = frame.clearVersion;
+      setHint("TRACE FIELD CLEARED");
+    }
+    if (frame.clearActive) {
+      const now = performance.now();
+      if (now - lastClearProgressUpdateRef.current >= 100) {
+        lastClearProgressUpdateRef.current = now;
+        clearProgressRef.current = frame.clearProgress;
+        setClearProgress(frame.clearProgress);
+      }
+    } else if (clearProgressRef.current !== 0) {
+      clearProgressRef.current = 0;
+      setClearProgress(0);
+    }
+    if (frame.gesture !== lastGestureRef.current) {
+      lastGestureRef.current = frame.gesture;
+      setActiveGesture(frame.gesture);
+    }
+    const nextSummary =
+      frame.hands.length === 0
+        ? "NO HANDS DETECTED"
+        : frame.hands
+            .map((hand) =>
+              hand.handedness === "Unknown"
+                ? `HAND ${hand.id.replace("hand-", "")}`
+                : `${hand.handedness.toUpperCase()} HAND`,
+            )
+            .sort()
+            .join(" + ");
+    if (nextSummary !== handSummaryRef.current) {
+      handSummaryRef.current = nextSummary;
+      setHandSummary(nextSummary);
+    }
+    if (debugEnabledRef.current) {
+      const now = performance.now();
+      if (now - lastDebugInteractionUpdateRef.current >= 180) {
+        lastDebugInteractionUpdateRef.current = now;
+        setDebugInteraction(frame);
+      }
+    }
   }, []);
 
   const updateTrackingStatus = useCallback((status: TrackingStatus, message?: string) => {
@@ -153,9 +224,12 @@ export default function Experience() {
     );
     if (status === "denied" || status === "unavailable" || status === "error") {
       trackerRef.current = null;
-      recognizerRef.current = new GestureRecognizer();
-      interactionRef.current = { ...initialInteraction };
+      resetTrackingFrame();
       lastGestureRef.current = "IDLE";
+      handSummaryRef.current = "NO HANDS DETECTED";
+      setHandSummary("NO HANDS DETECTED");
+      clearProgressRef.current = 0;
+      setClearProgress(0);
       setActiveGesture("IDLE");
     }
   }, []);
@@ -176,7 +250,10 @@ export default function Experience() {
     }
     diagnosticsRef.current = initialDiagnostics;
     lastDiagnosticsUpdateRef.current = 0;
+    handSummaryRef.current = "NO HANDS DETECTED";
     setDiagnostics(initialDiagnostics);
+    setDebugInteraction(null);
+    setHandSummary("NO HANDS DETECTED");
     const tracker = new HandTracker(
       video,
       updateHands,
@@ -185,7 +262,12 @@ export default function Experience() {
         diagnosticsRef.current = nextDiagnostics;
         if (!debugEnabledRef.current) return;
         const now = performance.now();
-        if (now - lastDiagnosticsUpdateRef.current < 180) return;
+        if (
+          nextDiagnostics.detectionActive &&
+          now - lastDiagnosticsUpdateRef.current < 180
+        ) {
+          return;
+        }
         lastDiagnosticsUpdateRef.current = now;
         setDiagnostics(nextDiagnostics);
       },
@@ -198,13 +280,17 @@ export default function Experience() {
   const stopTracking = useCallback(() => {
     trackerRef.current?.stop();
     trackerRef.current = null;
-    recognizerRef.current = new GestureRecognizer();
-    interactionRef.current = { ...initialInteraction };
+    resetTrackingFrame();
     lastGestureRef.current = "IDLE";
+    handSummaryRef.current = "NO HANDS DETECTED";
     setIsTracking(false);
     setTrackingStatus("idle");
     setStatusMessage("");
     setActiveGesture("IDLE");
+    setHandSummary("NO HANDS DETECTED");
+    setDebugInteraction(null);
+    clearProgressRef.current = 0;
+    setClearProgress(0);
   }, []);
 
   const testCapturedFrame = async () => {
@@ -236,6 +322,57 @@ export default function Experience() {
     setSettings((current) => ({ ...current, [key]: value }));
   };
 
+  const changeInteractionSetting = <Key extends keyof InteractionTuning>(
+    key: Key,
+    value: InteractionTuning[Key],
+  ) => {
+    setSettings((current) => ({
+      ...current,
+      interaction: { ...current.interaction, [key]: value },
+    }));
+  };
+
+  const clearTraceDrawings = () => {
+    const cleared = recognizerRef.current.clearDrawings();
+    interactionRef.current = {
+      ...interactionRef.current,
+      strokes: cleared.strokes,
+      strokeVersion: cleared.strokeVersion,
+      clearVersion: cleared.clearVersion,
+      clearCooldownRemaining: cleared.clearCooldownRemaining,
+      events: cleared.events,
+    };
+    lastClearVersionRef.current = cleared.clearVersion;
+    clearProgressRef.current = 0;
+    setClearProgress(0);
+    setHint("TRACE FIELD CLEARED");
+  };
+
+  const renderTuningSlider = (
+    key: keyof InteractionTuning,
+    label: string,
+    format: (value: number) => string = (value) => value.toFixed(2),
+  ) => {
+    const range = INTERACTION_TUNING_RANGES[key];
+    const value = settings.interaction[key];
+    return (
+      <label className="slider-control tuning-slider" key={key}>
+        <span>
+          {label} <output>{format(value)}</output>
+        </span>
+        <input
+          aria-label={label}
+          max={range.max}
+          min={range.min}
+          onChange={(event) => changeInteractionSetting(key, Number(event.target.value))}
+          step={range.step}
+          type="range"
+          value={value}
+        />
+      </label>
+    );
+  };
+
   const onPointerMove = (event: ReactPointerEvent<HTMLElement>) => {
     if (event.pointerType === "touch" && event.buttons === 0) return;
     if (event.target instanceof Element && event.target.closest("[data-ui]")) return;
@@ -244,6 +381,7 @@ export default function Experience() {
       y: event.clientY / window.innerHeight,
     };
     const current = interactionRef.current;
+    if (current.hands.length > 0) return;
     const tracePoints =
       event.buttons > 0
         ? [...current.tracePoints, point].slice(-28)
@@ -255,11 +393,13 @@ export default function Experience() {
       mouse: point,
       mouseActive: true,
       mousePressed: event.buttons > 0,
-      gesture: event.buttons > 0 ? "TRACE" : current.hands.length ? current.gesture : "GRAVITY",
+      gesture: event.buttons > 0 ? "TRACE" : "GRAVITY",
       tracePoints,
     };
-    if (current.hands.length === 0) {
-      setActiveGesture(event.buttons > 0 ? "TRACE" : "GRAVITY");
+    const nextGesture = event.buttons > 0 ? "TRACE" : "GRAVITY";
+    if (nextGesture !== lastGestureRef.current) {
+      lastGestureRef.current = nextGesture;
+      setActiveGesture(nextGesture);
     }
   };
 
@@ -271,7 +411,10 @@ export default function Experience() {
       gesture: interactionRef.current.hands.length ? interactionRef.current.gesture : "IDLE",
       tracePoints: interactionRef.current.hands.length ? interactionRef.current.tracePoints : [],
     };
-    if (!interactionRef.current.hands.length) setActiveGesture("IDLE");
+    if (!interactionRef.current.hands.length) {
+      lastGestureRef.current = "IDLE";
+      setActiveGesture("IDLE");
+    }
   };
 
   const togglePanel = async () => {
@@ -389,31 +532,51 @@ export default function Experience() {
             preserveAspectRatio="none"
             viewBox="0 0 1 1"
           >
-            {diagnostics.hands.map((hand, handIndex) => (
-              <g key={`${hand.handedness ?? "hand"}-${handIndex}`}>
-                {hand.keypoints.map((point) => {
-                  const isAnchor =
-                    point.name === "wrist" ||
-                    point.name.endsWith("_finger_tip") ||
-                    point.name === "thumb_tip";
-                  return (
-                    <g key={point.name}>
-                      <circle
-                        className={isAnchor ? "landmark-anchor" : "landmark-point"}
-                        cx={point.x}
-                        cy={point.y}
-                        r={isAnchor ? 0.012 : 0.006}
-                      />
-                      {isAnchor && (
-                        <text x={point.x + 0.012} y={point.y - 0.012}>
-                          {point.name.replace("_finger", "")}
-                        </text>
-                      )}
-                    </g>
-                  );
-                })}
-              </g>
-            ))}
+            {diagnostics.hands.map((hand, handIndex) => {
+              const label = hand.handedness?.toLowerCase();
+              const track = debugInteraction?.tracking.find(
+                (candidate) =>
+                  candidate.status === "tracking" &&
+                  candidate.handedness.toLowerCase() === label,
+              );
+              return (
+                <g
+                  className={track?.handedness === "Left" ? "left-hand-landmarks" : "right-hand-landmarks"}
+                  key={`${track?.id ?? hand.handedness ?? "hand"}-${handIndex}`}
+                >
+                  {hand.keypoints.map((point) => {
+                    const isAnchor =
+                      point.name === "wrist" ||
+                      point.name.endsWith("_finger_tip") ||
+                      point.name === "thumb_tip";
+                    return (
+                      <g key={point.name}>
+                        <circle
+                          className={isAnchor ? "landmark-anchor" : "landmark-point"}
+                          cx={point.x}
+                          cy={point.y}
+                          r={isAnchor ? 0.012 : 0.006}
+                        />
+                        {isAnchor && (
+                          <text x={point.x + 0.012} y={point.y - 0.012}>
+                            {point.name.replace("_finger", "")}
+                          </text>
+                        )}
+                      </g>
+                    );
+                  })}
+                  {track && (
+                    <text
+                      className="hand-track-label"
+                      x={track.center.x + 0.018}
+                      y={track.center.y}
+                    >
+                      {track.handedness.toUpperCase()} · {track.gesture}
+                    </text>
+                  )}
+                </g>
+              );
+            })}
           </svg>
         )}
         {!hasCameraImage && (
@@ -435,7 +598,7 @@ export default function Experience() {
               {diagnostics.videoFrameCount} advancing frames
             </span>
             <span>
-              HandPose model: {diagnostics.modelLoaded ? "ready" : "loading"} · full · one hand
+              HandPose model: {diagnostics.modelLoaded ? "ready" : "loading"} · full · max two hands
             </span>
             <span>TensorFlow.js backend: {diagnostics.inferenceBackend}</span>
             <span>
@@ -448,7 +611,7 @@ export default function Experience() {
             <span>Detected hands: {diagnostics.hands.length}</span>
             {diagnostics.hands.map((hand, index) => (
               <span key={`${hand.handedness ?? "hand"}-confidence-${index}`}>
-                Hand {index + 1}
+                Detection {index + 1}
                 {hand.handedness ? ` (${hand.handedness})` : ""}:{" "}
                 {Number.isFinite(hand.confidence)
                   ? `${(hand.confidence * 100).toFixed(0)}% confidence`
@@ -457,6 +620,38 @@ export default function Experience() {
               </span>
             ))}
             <span>Gesture engine: {activeGesture}</span>
+            {debugInteraction?.tracking.map((track) => {
+              const hand = debugInteraction.hands.find((candidate) => candidate.id === track.id);
+              return (
+                <span key={`track-${track.id}`}>
+                  {track.handedness === "Unknown" ? track.id : track.handedness} · {track.status} ·{" "}
+                  {track.gesture} · confidence {(track.confidence * 100).toFixed(0)}% ·{" "}
+                  center {track.center.x.toFixed(2)}, {track.center.y.toFixed(2)} ·{" "}
+                  tip {track.indexTip.x.toFixed(2)}, {track.indexTip.y.toFixed(2)} ·{" "}
+                  velocity {track.velocity.x.toFixed(2)}, {track.velocity.y.toFixed(2)} ·{" "}
+                  angle {track.orientation.toFixed(2)} rad · force {hand?.forceMode ?? "none"}
+                </span>
+              );
+            })}
+            {debugInteraction?.events.map((event) => (
+              <span key={`event-${event.id}`}>
+                EVENT {event.type.toUpperCase()}
+                {event.handId ? ` · ${event.handId}` : ""}
+                {event.direction
+                  ? ` · direction ${event.direction.x.toFixed(2)}, ${event.direction.y.toFixed(2)}`
+                  : ""}
+              </span>
+            ))}
+            {debugInteraction && (
+              <span>
+                Stroke points: {debugInteraction.strokes.reduce(
+                  (total, stroke) => total + stroke.points.length,
+                  0,
+                )}{" "}
+                · clear hold {(debugInteraction.clearProgress * 100).toFixed(0)}% · clear cooldown{" "}
+                {(debugInteraction.clearCooldownRemaining / 1000).toFixed(1)}s
+              </span>
+            )}
             {diagnostics.error && <span className="diagnostic-error">{diagnostics.error}</span>}
             <button
               className="tracking-toggle diagnostic-test-button"
@@ -506,10 +701,12 @@ export default function Experience() {
             <div>
               <p>{statusLabels[trackingStatus]}</p>
               <span>
-                {trackingStatus === "no-hands"
-                  ? "FULL HAND IN FRAME · PALM TO CAMERA"
+                {trackingStatus === "tracking"
+                  ? handSummary
                   : isTracking
                     ? "LOCAL PROCESSING"
+                  : trackingStatus === "no-hands"
+                    ? "FULL HAND IN FRAME · PALM TO CAMERA"
                     : "MOVE TO INTERACT"}
               </span>
             </div>
@@ -536,7 +733,19 @@ export default function Experience() {
 
           <div aria-live="polite" className="gesture-readout">
             <span className="readout-line" />
-            <p>{gestureLabels[activeGesture]}</p>
+            <p>
+              {activeGesture === "CLEAR ALL" && clearProgress > 0
+                ? `CLEAR ALL · HOLD ${Math.round(clearProgress * 100)}%`
+                : gestureLabels[activeGesture]}
+            </p>
+            {activeGesture === "CLEAR ALL" && (
+              <span
+                aria-label={`Clear all progress ${Math.round(clearProgress * 100)} percent`}
+                className="clear-progress-track"
+              >
+                <span style={{ width: `${clearProgress * 100}%` }} />
+              </span>
+            )}
             <span>{quality} QUALITY</span>
           </div>
 
@@ -600,6 +809,41 @@ export default function Experience() {
               />
             </label>
 
+            <p className="panel-section-label">HAND INTERACTION</p>
+            {renderTuningSlider("confidenceThreshold", "HAND CONFIDENCE", (value) =>
+              `${Math.round(value * 100)}%`,
+            )}
+            {renderTuningSlider("smoothing", "POSITION SMOOTHING")}
+            {renderTuningSlider("pinchEnterRatio", "PINCH SENSITIVITY")}
+            {renderTuningSlider("pinchExitRatio", "PINCH RELEASE")}
+            {renderTuningSlider("fingerExtensionRatio", "FINGER EXTENSION")}
+            {renderTuningSlider("gestureHoldMs", "GESTURE HOLD", (value) =>
+              `${Math.round(value)} ms`,
+            )}
+            {renderTuningSlider("impulseSpeed", "IMPULSE SENSITIVITY")}
+            {renderTuningSlider("impulseCooldownMs", "IMPULSE COOLDOWN", (value) =>
+              `${Math.round(value)} ms`,
+            )}
+            {renderTuningSlider("forceMultiplier", "HAND FORCE")}
+            {renderTuningSlider("traceSpacing", "TRACE DENSITY", (value) =>
+              `${(1 / value).toFixed(0)} pts/unit`,
+            )}
+            {renderTuningSlider("traceThickness", "TRACE THICKNESS", (value) =>
+              `${value.toFixed(1)} px`,
+            )}
+            {renderTuningSlider("traceGlow", "TRACE GLOW", (value) =>
+              `${Math.round(value)} px`,
+            )}
+            {renderTuningSlider("traceOpacity", "TRACE OPACITY", (value) =>
+              `${Math.round(value * 100)}%`,
+            )}
+            {renderTuningSlider("clearHoldMs", "CLEAR ALL HOLD", (value) =>
+              `${Math.round(value)} ms`,
+            )}
+            {renderTuningSlider("clearCooldownMs", "CLEAR ALL COOLDOWN", (value) =>
+              `${(value / 1000).toFixed(1)} s`,
+            )}
+
             <fieldset className="mode-control">
               <legend>VISUAL MODE</legend>
               {(["nebula", "filament", "monochrome"] as const).map((mode) => (
@@ -641,7 +885,8 @@ export default function Experience() {
               aria-label="Reset universe"
               onClick={() => {
                 engineRef.current?.reset();
-                setHint("The field returns to its first state.");
+                clearTraceDrawings();
+                setHint("The field and drawings return to their first state.");
               }}
               title="Reset universe"
               type="button"

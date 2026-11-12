@@ -143,6 +143,14 @@ button {
   fill: var(--yellow);
 }
 
+.hand-landmark-overlay .left-hand-landmarks .landmark-anchor {
+  fill: var(--acid);
+}
+
+.hand-landmark-overlay .right-hand-landmarks .landmark-anchor {
+  fill: var(--yellow);
+}
+
 .hand-landmark-overlay text {
   fill: var(--paper);
   font-family: var(--mono);
@@ -151,6 +159,16 @@ button {
   stroke: var(--void);
   stroke-width: 0.002;
   text-anchor: start;
+}
+
+.hand-landmark-overlay .hand-track-label {
+  fill: var(--acid);
+  font-size: 0.55rem;
+  letter-spacing: 0.04em;
+}
+
+.hand-landmark-overlay .right-hand-landmarks .hand-track-label {
+  fill: var(--yellow);
 }
 
 .tracking-diagnostics {
@@ -480,6 +498,8 @@ button {
   bottom: 110px;
   left: 50%;
   width: min(370px, calc(100vw - 32px));
+  max-height: calc(100svh - 150px);
+  overflow-y: auto;
   padding: 22px;
   border: 1px solid rgba(242, 240, 245, 0.17);
   background: rgba(11, 10, 16, 0.9);
@@ -513,6 +533,31 @@ button {
   font-family: var(--sans);
   font-size: 1rem;
   font-weight: 500;
+}
+
+.panel-section-label {
+  margin: 26px 0 8px;
+  color: var(--acid);
+  font-size: 0.52rem;
+  letter-spacing: 0.12em;
+}
+
+.tuning-slider {
+  margin: 13px 0;
+}
+
+.clear-progress-track {
+  width: 100%;
+  height: 2px;
+  margin-top: 5px;
+  background: rgba(242, 240, 245, 0.14);
+}
+
+.clear-progress-track > span {
+  display: block;
+  height: 100%;
+  background: var(--acid);
+  transition: width 100ms linear;
 }
 
 .panel-close {

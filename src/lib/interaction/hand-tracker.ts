@@ -4,6 +4,7 @@ import type {
   HandTrackingDiagnostics,
   TrackingStatus,
 } from "./types";
+import { INTERACTION_CONFIG } from "./config";
 
 interface Ml5Keypoint {
   x: number;
@@ -37,7 +38,7 @@ interface Ml5Api {
   tf: TensorFlowRuntime;
   handPose(
     options: {
-      maxHands: 1;
+      maxHands: 2;
       flipped: boolean;
       modelType: "full";
       runtime: "tfjs";
@@ -56,7 +57,7 @@ const DETECTION_TIMEOUT_MS = 12_000;
 const SEARCH_HINT_DELAY_MS = 7_000;
 const VIDEO_READY_TIMEOUT_MS = 10_000;
 const VIDEO_FRAME_TIMEOUT_MS = 5_000;
-const TARGET_INFERENCE_INTERVAL_MS = 1000 / 24;
+const TARGET_INFERENCE_INTERVAL_MS = INTERACTION_CONFIG.detection.inferenceIntervalMs;
 
 export class HandTracker implements HandTrackerHandle {
   private stream: MediaStream | null = null;
@@ -506,9 +507,9 @@ export class HandTracker implements HandTrackerHandle {
       console.info("[HANDPOSE INIT] TensorFlow.js backend ready:", inferenceBackend);
       this.updateDiagnostics({ inferenceBackend });
 
-      console.info("[HANDPOSE INIT] Initializing full model for one hand");
+      console.info("[HANDPOSE INIT] Initializing full model for up to two hands");
       const handPose = await ml5.handPose({
-        maxHands: 1,
+        maxHands: INTERACTION_CONFIG.detection.maxHands,
         flipped: true,
         modelType: "full",
         runtime: "tfjs",

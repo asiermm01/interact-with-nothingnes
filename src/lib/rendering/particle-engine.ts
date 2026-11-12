@@ -348,7 +348,8 @@ export async function createParticleEngine({
         activeHands.find((hand) => hand.handedness === "Right")?.center ??
         activeHands[0]?.center ??
         state.mouse;
-      const collapsing = !state.clearActive && activeHands.some((hand) => hand.isPinching);
+      const collapsing =
+        !state.clearActive && activeHands.some((hand) => hand.interaction === "collapse");
 
       if (density !== particleCount) {
         particleCount = density;
@@ -380,8 +381,8 @@ export async function createParticleEngine({
       const forceRange = Math.min(width, height) * INTERACTION_CONFIG.forces.rangeRatio;
       const forceRangeSquared = forceRange * forceRange;
       const forceStrength =
+        settingsRef.current.interaction.gravityStrength *
         (intensity / 100) *
-        INTERACTION_CONFIG.forces.strength *
         settingsRef.current.interaction.forceMultiplier;
 
       for (let index = 0; index < particleCount; index += 1) {
@@ -399,25 +400,21 @@ export async function createParticleEngine({
         for (let handIndex = 0; !state.clearActive && handIndex < activeHands.length; handIndex += 1) {
           const hand = activeHands[handIndex];
           if (hand.forceMode === "none") continue;
-          const target = hand.isPinching ? hand.pinchPoint : hand.center;
+          const target = hand.interaction === "collapse" ? hand.pinchPoint : hand.center;
           const dx = x - target.x * width;
           const dy = y - target.y * height;
           const distanceSquared = dx * dx + dy * dy;
           if (distanceSquared > forceRangeSquared || distanceSquared < 2) continue;
 
           const distance = Math.sqrt(distanceSquared);
-          const falloff = 1 - distance / forceRange;
-          const direction = hand.forceMode === "repel" ? -1 : 1;
-          const gestureStrength = hand.isPinching
+          const falloff = Math.pow(1 - distance / forceRange, 2);
+          const gestureStrength = hand.interaction === "collapse"
             ? INTERACTION_CONFIG.forces.collapseMultiplier
-            : hand.isIndexPointing
-              ? INTERACTION_CONFIG.forces.traceMultiplier
-              : 1;
-          const force =
-            (forceStrength * falloff * gestureStrength * direction * delta) / distance;
-          vx -= dx * force * 0.001;
-          vy -= dy * force * 0.001;
-          if (hand.isPinching) {
+            : 1;
+          const acceleration = forceStrength * falloff * gestureStrength;
+          vx -= (dx / distance) * acceleration * delta;
+          vy -= (dy / distance) * acceleration * delta;
+          if (hand.interaction === "collapse") {
             particles.alpha[index] = Math.max(0.12, particles.alpha[index] - 0.012);
           }
         }
@@ -433,32 +430,6 @@ export async function createParticleEngine({
             const direction = state.mousePressed ? -1 : 1;
             vx -= dx * force * 0.001 * direction;
             vy -= dy * force * 0.001 * direction;
-          }
-        }
-
-        for (let waveIndex = 0; waveIndex < state.shockwaves.length; waveIndex += 1) {
-          const wave = state.shockwaves[waveIndex];
-          const dx = x - wave.center.x * width;
-          const dy = y - wave.center.y * height;
-          const distance = Math.hypot(dx, dy);
-          const front =
-            wave.age *
-            Math.min(width, height) *
-            INTERACTION_CONFIG.shockwave.radialRatio;
-          const band = Math.exp(
-            -Math.abs(distance - front) * INTERACTION_CONFIG.shockwave.bandSharpness,
-          );
-          if (distance > 1) {
-            const push =
-              band * wave.strength * INTERACTION_CONFIG.shockwave.forceStrength * delta;
-            vx +=
-              ((dx / distance) * INTERACTION_CONFIG.shockwave.radialRatio +
-                wave.direction.x * INTERACTION_CONFIG.shockwave.directedRatio) *
-              push;
-            vy +=
-              ((dy / distance) * INTERACTION_CONFIG.shockwave.radialRatio +
-                wave.direction.y * INTERACTION_CONFIG.shockwave.directedRatio) *
-              push;
           }
         }
 
@@ -506,29 +477,21 @@ export async function createParticleEngine({
         }
       }
 
-      for (let waveIndex = 0; waveIndex < state.shockwaves.length; waveIndex += 1) {
-        const wave = state.shockwaves[waveIndex];
-        const front =
-          wave.age *
-          Math.min(width, height) *
-          INTERACTION_CONFIG.shockwave.radialRatio;
+      for (const hand of activeHands) {
+        if (hand.interaction !== "collapse") continue;
+        const x = hand.pinchPoint.x * width;
+        const y = hand.pinchPoint.y * height;
+        const pulse = 25 + Math.sin(now * 5) * 3;
         trailLayer.noFill();
-        trailLayer.stroke(154, 217, 108, Math.min(115, wave.strength * 90));
-        trailLayer.strokeWeight(1 + wave.strength * 1.4);
-        trailLayer.ellipse(
-          wave.center.x * width,
-          wave.center.y * height,
-          front * 2,
-          front * 2,
-        );
-        trailLayer.line(
-          wave.center.x * width,
-          wave.center.y * height,
-          (wave.center.x + wave.direction.x * INTERACTION_CONFIG.shockwave.directionLength) *
-            width,
-          (wave.center.y + wave.direction.y * INTERACTION_CONFIG.shockwave.directionLength) *
-            height,
-        );
+        trailLayer.stroke(154, 217, 108, 155);
+        trailLayer.strokeWeight(1.5);
+        trailLayer.ellipse(x, y, pulse, pulse);
+        trailLayer.stroke(160, 138, 191, 110);
+        trailLayer.strokeWeight(1);
+        trailLayer.ellipse(x, y, pulse * 0.58, pulse * 0.58);
+        trailLayer.noStroke();
+        trailLayer.fill(7, 7, 11, 185);
+        trailLayer.ellipse(x, y, pulse * 0.28, pulse * 0.28);
       }
       if (activeHands.length === 0 && state.tracePoints.length > 1) {
         trailLayer.noFill();
@@ -631,6 +594,29 @@ export async function createParticleEngine({
           p.image(persistentLayer, -width / 2, -height / 2, width, height);
           p.pop();
         }
+      }
+
+      for (const cursor of state.cursors) {
+        const x = cursor.position.x * width - width / 2;
+        const y = cursor.position.y * height - height / 2;
+        const brush = cursor.mode === "TRACE";
+        const diameter = brush ? 20 : 14;
+        p.push();
+        p.resetShader();
+        p.noFill();
+        p.stroke(brush ? 154 : 242, brush ? 217 : 240, brush ? 108 : 245, 220);
+        p.strokeWeight(1.2);
+        p.ellipse(x, y, diameter, diameter);
+        if (brush) {
+          p.stroke(154, 217, 108, 130);
+          p.strokeWeight(3);
+          p.ellipse(x, y, diameter + 5, diameter + 5);
+        } else {
+          p.stroke(242, 240, 245, 150);
+          p.line(x - 3, y, x + 3, y);
+          p.line(x, y - 3, x, y + 3);
+        }
+        p.pop();
       }
     };
 

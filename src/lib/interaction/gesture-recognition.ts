@@ -1,10 +1,14 @@
 import { INTERACTION_CONFIG } from "./config";
 import type {
   DetectedHand,
-  HandGestureName,
+  FingerName,
+  HandCursor,
+  HandForceMode,
   HandIdentity,
+  HandInteraction,
   HandLandmark,
   HandObservation,
+  HandPoseName,
   HandPresenceStatus,
   HandTrackSnapshot,
   Handedness,
@@ -13,22 +17,29 @@ import type {
   InteractionTuning,
   PersistentStroke,
   Point2D,
-  Shockwave,
 } from "./types";
+
+interface FingerDefinition {
+  name: FingerName;
+  tip: string;
+  joint: string;
+  base: string;
+}
 
 interface HandMemory {
   id: HandIdentity;
   handedness: Handedness;
   center: Point2D;
-  indexTip: Point2D;
+  cursorPoint: Point2D;
   velocity: Point2D;
   orientation: number;
   confidence: number;
   isPinching: boolean;
-  gesture: HandGestureName;
-  candidateGesture: HandGestureName;
+  pose: HandPoseName;
+  candidatePose: HandPoseName;
   candidateSince: number;
-  lastImpulseAt: number;
+  extendedFingers: Record<FingerName, boolean>;
+  fingerCount: number;
   lastSeen: number;
 }
 
@@ -36,8 +47,26 @@ interface AssignedObservation {
   observation: HandObservation;
   id: HandIdentity;
   handedness: Handedness;
-  center: Point2D;
 }
+
+interface PoseStability {
+  pose: HandPoseName;
+  candidatePose: HandPoseName;
+  candidateSince: number;
+  stability: number;
+}
+
+const fingerDefinitions: FingerDefinition[] = [
+  { name: "thumb", tip: "thumb_tip", joint: "thumb_ip", base: "thumb_mcp" },
+  { name: "index", tip: "index_finger_tip", joint: "index_finger_pip", base: "index_finger_mcp" },
+  { name: "middle", tip: "middle_finger_tip", joint: "middle_finger_pip", base: "middle_finger_mcp" },
+  { name: "ring", tip: "ring_finger_tip", joint: "ring_finger_pip", base: "ring_finger_mcp" },
+  { name: "pinky", tip: "pinky_finger_tip", joint: "pinky_finger_pip", base: "pinky_finger_mcp" },
+];
+
+const fingerNames = fingerDefinitions.map((finger) => finger.name);
+const extendedFingersForCollapse: FingerName[] = ["middle", "ring", "pinky"];
+const nonThumbFingers: FingerName[] = ["index", "middle", "ring", "pinky"];
 
 const distance = (a: Point2D, b: Point2D) => Math.hypot(a.x - b.x, a.y - b.y);
 const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
@@ -64,6 +93,19 @@ const getCenter = (landmarks: HandLandmark[]): Point2D => {
   };
 };
 
+const angleAt = (a: Point2D, vertex: Point2D, c: Point2D) => {
+  const first = { x: a.x - vertex.x, y: a.y - vertex.y };
+  const second = { x: c.x - vertex.x, y: c.y - vertex.y };
+  const firstLength = Math.hypot(first.x, first.y);
+  const secondLength = Math.hypot(second.x, second.y);
+  if (firstLength < 0.001 || secondLength < 0.001) return 0;
+  const cosine = Math.min(
+    1,
+    Math.max(-1, (first.x * second.x + first.y * second.y) / (firstLength * secondLength)),
+  );
+  return (Math.acos(cosine) * 180) / Math.PI;
+};
+
 const getHandedness = (label?: string): Handedness => {
   const normalized = label?.trim().toLowerCase();
   if (normalized === "left" || normalized?.includes("left")) return "Left";
@@ -78,11 +120,21 @@ const getOrientation = (landmarks: HandLandmark[]) => {
   return Math.atan2(pinkyBase.y - indexBase.y, pinkyBase.x - indexBase.x);
 };
 
+const getInteractionForPose = (pose: HandPoseName): HandInteraction => {
+  if (pose === "CURSOR") return "cursor";
+  if (pose === "TRACE") return "trace";
+  if (pose === "GRAVITY") return "gravity";
+  if (pose === "COLLAPSE") return "collapse";
+  return "none";
+};
+
+const getForceMode = (interaction: HandInteraction): HandForceMode =>
+  interaction === "gravity" || interaction === "collapse" ? "attract" : "none";
+
 export class GestureRecognizer {
   private readonly memory = new Map<HandIdentity, HandMemory>();
   private readonly strokes: PersistentStroke[] = [];
   private readonly activeStrokes = new Map<HandIdentity, PersistentStroke>();
-  private readonly shockwaves: Shockwave[] = [];
   private readonly recentEvents: InteractionEvent[] = [];
   private nextAnonymousId = 1;
   private nextStrokeId = 1;
@@ -129,10 +181,10 @@ export class GestureRecognizer {
     this.activeStrokes.forEach((_stroke, id) => {
       if (!visibleIds.has(id)) this.activeStrokes.delete(id);
     });
-    const events: InteractionEvent[] = [];
-    const bothFists = hands.length === 2 && hands.every((hand) => hand.isFist);
 
-    if (bothFists) {
+    const bothClearPoses =
+      hands.length === 2 && hands.every((hand) => hand.isThumbOnly);
+    if (bothClearPoses) {
       if (
         !this.clearLatched &&
         this.clearStartedAt === null &&
@@ -145,24 +197,23 @@ export class GestureRecognizer {
       this.clearLatched = false;
     }
 
-    const clearHoldElapsed =
-      this.clearStartedAt === null ? 0 : now - this.clearStartedAt;
+    const clearHoldElapsed = this.clearStartedAt === null ? 0 : now - this.clearStartedAt;
     const clearProgress =
-      bothFists && !this.clearLatched
+      bothClearPoses && !this.clearLatched
         ? clamp01(clearHoldElapsed / tuning.clearHoldMs)
         : this.clearLatched
           ? 1
           : 0;
     const clearActive =
-      bothFists &&
+      bothClearPoses &&
       now >= this.clearCooldownUntil &&
       (this.clearLatched || this.clearStartedAt !== null);
 
+    const clearEvent: InteractionEvent[] = [];
     if (
       clearActive &&
       !this.clearLatched &&
-      clearHoldElapsed >= tuning.clearHoldMs &&
-      now >= this.clearCooldownUntil
+      clearHoldElapsed >= tuning.clearHoldMs
     ) {
       this.clearLatched = true;
       this.clearCooldownUntil = now + tuning.clearCooldownMs;
@@ -170,60 +221,67 @@ export class GestureRecognizer {
       this.activeStrokes.clear();
       this.strokeVersion += 1;
       this.clearVersion += 1;
-      events.push({ id: this.nextEventId++, type: "clear-all", timestamp: now });
+      clearEvent.push({ id: this.nextEventId++, type: "clear-all", timestamp: now });
+    }
+
+    const stretchActive =
+      !clearActive &&
+      hands.length === 2 &&
+      hands.every((hand) => hand.isOpenPalm && hand.stablePose === "OPEN PALM");
+    for (const hand of hands) {
+      hand.interaction = clearActive
+        ? "clear-all"
+        : stretchActive
+          ? "stretch"
+          : getInteractionForPose(hand.stablePose);
+      hand.forceMode = clearActive || stretchActive ? "none" : getForceMode(hand.interaction);
     }
 
     if (clearActive) {
       this.activeStrokes.clear();
     } else {
       for (const hand of hands) {
-        if (hand.gesture === "TRACE") this.updateStroke(hand, tuning);
+        if (hand.interaction === "trace") this.updateStroke(hand, tuning);
         else this.activeStrokes.delete(hand.id);
       }
     }
 
-    if (!clearActive) {
-      for (const hand of hands) {
-        const speed = Math.hypot(hand.velocity.x, hand.velocity.y);
-        const track = this.memory.get(hand.id);
-        if (
-          track &&
-          speed >= tuning.impulseSpeed &&
-          now - track.lastImpulseAt >= tuning.impulseCooldownMs
-        ) {
-          const magnitude = Math.max(speed, 0.001);
-          const direction = {
-            x: hand.velocity.x / magnitude,
-            y: hand.velocity.y / magnitude,
-          };
-          this.shockwaves.push({ center: hand.center, direction, strength: 1, age: 0 });
-          track.lastImpulseAt = now;
-          events.push({
-            id: this.nextEventId++,
-            type: "impulse",
-            timestamp: now,
-            handId: hand.id,
-            center: hand.center,
-            direction,
-          });
-        }
-      }
+    this.recordEvents(clearEvent, now);
+    if (clearActive) {
+      this.updateFieldTransform([], delta, tuning.stretchSensitivity);
+    } else {
+      this.updateFieldTransform(hands, delta, tuning.stretchSensitivity, stretchActive);
     }
 
-    this.recordEvents(events, now);
-    this.updateShockwaves(delta);
-    if (!clearActive) this.updateFieldTransform(hands, delta);
-
+    const cursors: HandCursor[] = clearActive
+      ? []
+      : hands.flatMap((hand) =>
+          hand.interaction === "cursor" || hand.interaction === "trace"
+            ? [
+                {
+                  handId: hand.id,
+                  position: hand.cursorPoint,
+                  mode: hand.interaction === "trace" ? "TRACE" : "CURSOR",
+                },
+              ]
+            : [],
+        );
     const primaryHand = hands.find((hand) => hand.handedness === "Right") ?? hands[0];
     const gesture = clearActive
       ? "CLEAR ALL"
-      : hands.some((hand) => hand.isPinching)
-        ? "COLLAPSE"
-        : hands.length >= 2
-          ? "STRETCH"
-          : events.some((event) => event.type === "impulse")
-            ? "IMPULSE"
-            : primaryHand?.gesture ?? "IDLE";
+      : stretchActive
+        ? "STRETCH"
+        : hands.some((hand) => hand.interaction === "collapse")
+          ? "COLLAPSE"
+          : hands.some((hand) => hand.interaction === "trace")
+            ? "TRACE"
+            : hands.some((hand) => hand.interaction === "cursor")
+              ? "CURSOR"
+              : hands.some((hand) => hand.interaction === "gravity")
+                ? "GRAVITY"
+                : primaryHand?.stablePose === "OPEN PALM"
+                  ? "IDLE"
+                  : "IDLE";
 
     const tracking = this.getTrackingSnapshots(hands, now);
     return {
@@ -233,6 +291,7 @@ export class GestureRecognizer {
       mouseActive: false,
       mousePressed: false,
       gesture,
+      cursors,
       tracePoints: [],
       strokes: this.strokes,
       strokeVersion: this.strokeVersion,
@@ -241,7 +300,6 @@ export class GestureRecognizer {
       clearActive,
       clearCooldownRemaining: Math.max(0, this.clearCooldownUntil - now),
       events: this.recentEvents,
-      shockwaves: this.shockwaves,
       universeScale: this.universeScale,
       universeRotation: this.universeRotation,
     };
@@ -361,14 +419,14 @@ export class GestureRecognizer {
     return observations.map((observation, index) => {
       const id = assigned.get(index) ?? `hand-${this.nextAnonymousId++}`;
       const existing = this.memory.get(id);
+      const reportedHandedness = getHandedness(observation.handedness);
       return {
         observation,
         id,
         handedness:
-          getHandedness(observation.handedness) === "Unknown"
+          reportedHandedness === "Unknown"
             ? existing?.handedness ?? "Unknown"
-            : getHandedness(observation.handedness),
-        center: centers[index],
+            : reportedHandedness,
       };
     });
   }
@@ -392,10 +450,6 @@ export class GestureRecognizer {
   ): DetectedHand {
     const keypoints = observation.keypoints;
     const wrist = findPoint(keypoints, "wrist") ?? { x: 0.5, y: 0.5 };
-    const observedIndexTip = findPoint(keypoints, "index_finger_tip");
-    const observedThumbTip = findPoint(keypoints, "thumb_tip");
-    const indexTip = observedIndexTip ?? wrist;
-    const thumbTip = observedThumbTip ?? wrist;
     const indexBase = findPoint(keypoints, "index_finger_mcp") ?? wrist;
     const pinkyBase = findPoint(keypoints, "pinky_finger_mcp") ?? wrist;
     const center = getCenter(keypoints);
@@ -406,12 +460,6 @@ export class GestureRecognizer {
           y: lerp(previous.center.y, center.y, tuning.smoothing),
         }
       : center;
-    const smoothedTip = previous
-      ? {
-          x: lerp(previous.indexTip.x, indexTip.x, tuning.smoothing),
-          y: lerp(previous.indexTip.y, indexTip.y, tuning.smoothing),
-        }
-      : indexTip;
     const velocity =
       previous && delta > 0
         ? {
@@ -419,116 +467,182 @@ export class GestureRecognizer {
             y: (smoothedCenter.y - previous.center.y) / delta,
           }
         : { x: 0, y: 0 };
+
+    const extendedFingers: Record<FingerName, boolean> = {
+      thumb: false,
+      index: false,
+      middle: false,
+      ring: false,
+      pinky: false,
+    };
+    const fingerTips: Point2D[] = [];
+    let availableFingerCount = 0;
+    for (const finger of fingerDefinitions) {
+      const tip = findPoint(keypoints, finger.tip);
+      const joint = findPoint(keypoints, finger.joint);
+      const base = findPoint(keypoints, finger.base);
+      if (!tip || !joint || !base) continue;
+
+      const distanceFromJoint = finger.name === "thumb"
+        ? distance(joint, indexBase)
+        : distance(joint, wrist);
+      const distanceFromTip = finger.name === "thumb"
+        ? distance(tip, indexBase)
+        : distance(tip, wrist);
+      const referencePoint = previous?.extendedFingers[finger.name] ?? false;
+      const extensionRatio = referencePoint
+        ? tuning.fingerReleaseRatio
+        : tuning.fingerExtensionRatio;
+      const angleThreshold = referencePoint
+        ? INTERACTION_CONFIG.gestures.fingerReleaseAngleDeg
+        : INTERACTION_CONFIG.gestures.fingerExtensionAngleDeg;
+      const angle = angleAt(base, joint, tip);
+      const isExtended =
+        angle >= angleThreshold &&
+        distanceFromTip > distanceFromJoint * extensionRatio;
+      extendedFingers[finger.name] = isExtended;
+      availableFingerCount += 1;
+      if (isExtended) fingerTips.push(tip);
+    }
+
+    const extendedNames = fingerNames.filter((name) => extendedFingers[name]);
+    const fingerCount = extendedNames.length;
     const palmWidth = Math.max(distance(indexBase, pinkyBase), 0.04);
+    const indexTip = findPoint(keypoints, "index_finger_tip");
+    const thumbTip = findPoint(keypoints, "thumb_tip");
+    const thumbIp = findPoint(keypoints, "thumb_ip");
     const pinchRatio =
-      observedIndexTip && observedThumbTip
+      indexTip && thumbTip
         ? distance(thumbTip, indexTip) / palmWidth
         : Number.POSITIVE_INFINITY;
     const isPinching =
-      Boolean(observedIndexTip && observedThumbTip) &&
+      Boolean(indexTip && thumbTip && thumbIp) &&
       (previous?.isPinching
         ? pinchRatio < Math.max(tuning.pinchEnterRatio, tuning.pinchExitRatio)
         : pinchRatio < tuning.pinchEnterRatio);
-    const extended = new Map<string, boolean>();
-    let availableFingerCount = 0;
-    let extendedCount = 0;
-    for (const finger of ["index_finger", "middle_finger", "ring_finger", "pinky_finger"]) {
-      const tip = findPoint(keypoints, `${finger}_tip`);
-      const pip = findPoint(keypoints, `${finger}_pip`);
-      if (tip && pip) availableFingerCount += 1;
-      const isExtended = Boolean(
-        tip &&
-          pip &&
-          distance(tip, wrist) >
-            distance(pip, wrist) * tuning.fingerExtensionRatio,
-      );
-      extended.set(finger, isExtended);
-      if (isExtended) extendedCount += 1;
-    }
-    const isIndexPointing =
-      extended.get("index_finger") === true &&
-      availableFingerCount >= 3 &&
-      extendedCount - 1 <= 1 &&
-      !isPinching;
+    const isFist = availableFingerCount >= 4 && fingerCount === 0;
+    const isThumbOnly =
+      availableFingerCount === fingerDefinitions.length &&
+      extendedFingers.thumb &&
+      nonThumbFingers.every((finger) => !extendedFingers[finger]);
     const isOpenPalm =
-      availableFingerCount >= 3 && extendedCount >= 3 && !isPinching;
-    const isFist =
-      availableFingerCount >= 3 &&
-      extendedCount <= 1 &&
-      !isPinching &&
-      !isIndexPointing;
-    const nextGesture: HandGestureName = isPinching
+      availableFingerCount >= 4 && fingerCount >= Math.min(4, availableFingerCount);
+    const isCollapse =
+      isPinching &&
+      availableFingerCount === fingerDefinitions.length &&
+      !isOpenPalm &&
+      extendedFingersForCollapse.every((finger) => extendedFingers[finger]);
+
+    const rawPose: HandPoseName = isCollapse
       ? "COLLAPSE"
-      : isIndexPointing
-        ? "TRACE"
-        : isOpenPalm || isFist
-          ? "GRAVITY"
-          : "IDLE";
-    const gesture = this.stabilizeGesture(previous, nextGesture, now, tuning.gestureHoldMs);
-    const forceMode = isPinching || isFist
-      ? "attract"
-      : isOpenPalm
-        ? "repel"
-        : isIndexPointing
-          ? "attract"
-          : "none";
+      : fingerCount === 1 && availableFingerCount >= 4
+        ? "CURSOR"
+        : fingerCount === 2 && availableFingerCount >= 4
+          ? "TRACE"
+          : isFist
+            ? "GRAVITY"
+            : isOpenPalm
+              ? "OPEN PALM"
+              : "IDLE";
+    const poseStability =
+      rawPose === "CURSOR" || rawPose === "TRACE"
+        ? {
+            pose: rawPose,
+            candidatePose: rawPose,
+            candidateSince: now,
+            stability: 1,
+          }
+        : this.stabilizePose(previous, rawPose, now, tuning.gestureHoldMs);
+    const rawCursorPoint =
+      fingerTips.length > 0
+        ? fingerTips.reduce(
+            (point, tip) => ({ x: point.x + tip.x / fingerTips.length, y: point.y + tip.y / fingerTips.length }),
+            { x: 0, y: 0 },
+          )
+        : indexTip ?? wrist;
+    const cursorPoint = previous
+      ? {
+          x: lerp(previous.cursorPoint.x, rawCursorPoint.x, tuning.smoothing),
+          y: lerp(previous.cursorPoint.y, rawCursorPoint.y, tuning.smoothing),
+        }
+      : rawCursorPoint;
+    const interaction = getInteractionForPose(poseStability.pose);
 
     this.memory.set(id, {
       id,
       handedness,
       center: smoothedCenter,
-      indexTip: smoothedTip,
+      cursorPoint,
       velocity,
       orientation: getOrientation(keypoints),
       confidence: observation.confidence,
       isPinching,
-      gesture,
-      candidateGesture: previous?.candidateGesture ?? nextGesture,
-      candidateSince: previous?.candidateSince ?? now,
-      lastImpulseAt: previous?.lastImpulseAt ?? Number.NEGATIVE_INFINITY,
+      pose: poseStability.pose,
+      candidatePose: poseStability.candidatePose,
+      candidateSince: poseStability.candidateSince,
+      extendedFingers,
+      fingerCount,
       lastSeen: now,
     });
 
     return {
       id,
       handedness,
+      pose: rawPose,
+      stablePose: poseStability.pose,
+      interaction,
       center: smoothedCenter,
-      indexTip: smoothedTip,
-      pinchPoint: {
-        x: (thumbTip.x + indexTip.x) / 2,
-        y: (thumbTip.y + indexTip.y) / 2,
-      },
+      cursorPoint,
+      pinchPoint:
+        indexTip && thumbTip
+          ? { x: (thumbTip.x + indexTip.x) / 2, y: (thumbTip.y + indexTip.y) / 2 }
+          : wrist,
       orientation: getOrientation(keypoints),
       confidence: observation.confidence,
-      openness: extendedCount / 4,
-      gesture,
-      forceMode,
+      openness: fingerCount / Math.max(availableFingerCount, 1),
+      fingerCount,
+      extendedFingers: extendedNames,
+      stability: poseStability.stability,
+      forceMode: getForceMode(interaction),
       isPinching,
       isFist,
+      isThumbOnly,
       isOpenPalm,
-      isIndexPointing,
       velocity,
     };
   }
 
-  private stabilizeGesture(
+  private stabilizePose(
     previous: HandMemory | undefined,
-    next: HandGestureName,
+    next: HandPoseName,
     now: number,
     holdMs: number,
-  ): HandGestureName {
-    if (!previous) return next;
-    if (next === previous.gesture) {
-      previous.candidateGesture = next;
-      previous.candidateSince = now;
-      return next;
+  ): PoseStability {
+    if (!previous || next === previous.pose) {
+      return {
+        pose: next,
+        candidatePose: next,
+        candidateSince: now,
+        stability: 1,
+      };
     }
-    if (next !== previous.candidateGesture) {
-      previous.candidateGesture = next;
-      previous.candidateSince = now;
-      return previous.gesture;
+    if (next !== previous.candidatePose) {
+      return {
+        pose: previous.pose,
+        candidatePose: next,
+        candidateSince: now,
+        stability: 0,
+      };
     }
-    return now - previous.candidateSince >= holdMs ? next : previous.gesture;
+    const stability = clamp01((now - previous.candidateSince) / Math.max(holdMs, 1));
+    return stability >= 1
+      ? { pose: next, candidatePose: next, candidateSince: now, stability: 1 }
+      : {
+          pose: previous.pose,
+          candidatePose: next,
+          candidateSince: previous.candidateSince,
+          stability,
+        };
   }
 
   private updateStroke(hand: DetectedHand, tuning: InteractionTuning) {
@@ -537,7 +651,7 @@ export class GestureRecognizer {
       stroke = {
         id: `stroke-${this.nextStrokeId++}`,
         handId: hand.id,
-        points: [hand.indexTip],
+        points: [hand.cursorPoint],
         style: {
           color: INTERACTION_CONFIG.drawing.color,
           thickness: tuning.traceThickness,
@@ -552,7 +666,7 @@ export class GestureRecognizer {
     }
 
     const previous = stroke.points[stroke.points.length - 1];
-    const segmentLength = distance(previous, hand.indexTip);
+    const segmentLength = distance(previous, hand.cursorPoint);
     if (segmentLength < tuning.traceSpacing) return;
     const steps = Math.min(
       Math.ceil(segmentLength / tuning.traceSpacing),
@@ -561,20 +675,31 @@ export class GestureRecognizer {
     for (let step = 1; step <= steps; step += 1) {
       const amount = step / steps;
       stroke.points.push({
-        x: lerp(previous.x, hand.indexTip.x, amount),
-        y: lerp(previous.y, hand.indexTip.y, amount),
+        x: lerp(previous.x, hand.cursorPoint.x, amount),
+        y: lerp(previous.y, hand.cursorPoint.y, amount),
       });
     }
     this.strokeVersion += 1;
   }
 
-  private updateFieldTransform(hands: DetectedHand[], delta: number) {
-    if (hands.length >= 2) {
+  private updateFieldTransform(
+    hands: DetectedHand[],
+    delta: number,
+    sensitivity: number,
+    stretchActive = false,
+  ) {
+    if (stretchActive && hands.length === 2) {
       const orderedHands = [...hands].sort((a, b) => a.id.localeCompare(b.id));
       const first = orderedHands[0];
       const second = orderedHands[1];
       const separation = distance(first.center, second.center);
-      const targetScale = Math.min(1.8, Math.max(0.65, 0.72 + separation * 0.95));
+      const targetScale = Math.min(
+        INTERACTION_CONFIG.stretch.maximumScale,
+        Math.max(
+          INTERACTION_CONFIG.stretch.minimumScale,
+          1 + (separation - INTERACTION_CONFIG.stretch.baselineSeparation) * sensitivity,
+        ),
+      );
       this.universeScale = lerp(this.universeScale, targetScale, 1 - Math.exp(-delta * 5));
       const targetRotation = Math.atan2(
         second.center.y - first.center.y,
@@ -588,20 +713,6 @@ export class GestureRecognizer {
     this.universeRotation += wrapAngle(-this.universeRotation) * (1 - Math.exp(-delta * 1.8));
   }
 
-  private updateShockwaves(delta: number) {
-    for (let index = this.shockwaves.length - 1; index >= 0; index -= 1) {
-      const wave = this.shockwaves[index];
-      wave.age += delta;
-      wave.strength *= Math.pow(INTERACTION_CONFIG.shockwave.decayPerFrame, delta * 60);
-      if (
-        wave.age > INTERACTION_CONFIG.shockwave.lifetimeSeconds ||
-        wave.strength < 0.08
-      ) {
-        this.shockwaves.splice(index, 1);
-      }
-    }
-  }
-
   private getTrackingSnapshots(hands: DetectedHand[], now: number): HandTrackSnapshot[] {
     const currentIds = new Set(hands.map((hand) => hand.id));
     const snapshots = hands.map((hand) => ({
@@ -609,9 +720,12 @@ export class GestureRecognizer {
       handedness: hand.handedness,
       status: "tracking" as HandPresenceStatus,
       confidence: hand.confidence,
-      gesture: hand.gesture,
+      pose: hand.pose,
+      interaction: hand.interaction,
+      fingerCount: hand.fingerCount,
+      stability: hand.stability,
       center: hand.center,
-      indexTip: hand.indexTip,
+      cursorPoint: hand.cursorPoint,
       velocity: hand.velocity,
       orientation: hand.orientation,
       lastSeenAt: now,
@@ -629,9 +743,12 @@ export class GestureRecognizer {
         handedness: track.handedness,
         status: "temporarily-lost",
         confidence: track.confidence,
-        gesture: track.gesture,
+        pose: track.pose,
+        interaction: "none",
+        fingerCount: track.fingerCount,
+        stability: 0,
         center: track.center,
-        indexTip: track.indexTip,
+        cursorPoint: track.cursorPoint,
         velocity: track.velocity,
         orientation: track.orientation,
         lastSeenAt: track.lastSeen,
@@ -641,14 +758,14 @@ export class GestureRecognizer {
   }
 
   private createFrame(now: number): InteractionFrame {
-    const tracking = this.getTrackingSnapshots([], now);
     return {
       hands: [],
-      tracking,
+      tracking: this.getTrackingSnapshots([], now),
       mouse: { x: 0.5, y: 0.5 },
       mouseActive: false,
       mousePressed: false,
       gesture: "IDLE",
+      cursors: [],
       tracePoints: [],
       strokes: this.strokes,
       strokeVersion: this.strokeVersion,
@@ -657,7 +774,6 @@ export class GestureRecognizer {
       clearActive: false,
       clearCooldownRemaining: Math.max(0, this.clearCooldownUntil - now),
       events: this.recentEvents,
-      shockwaves: this.shockwaves,
       universeScale: this.universeScale,
       universeRotation: this.universeRotation,
     };

@@ -1,16 +1,31 @@
 export type GestureName =
   | "IDLE"
+  | "CURSOR"
   | "TRACE"
   | "GRAVITY"
-  | "IMPULSE"
   | "STRETCH"
   | "COLLAPSE"
   | "CLEAR ALL";
 
-export type HandGestureName = "IDLE" | "TRACE" | "GRAVITY" | "COLLAPSE";
+export type HandPoseName =
+  | "IDLE"
+  | "CURSOR"
+  | "TRACE"
+  | "GRAVITY"
+  | "COLLAPSE"
+  | "OPEN PALM";
+export type HandInteraction =
+  | "none"
+  | "cursor"
+  | "trace"
+  | "gravity"
+  | "collapse"
+  | "stretch"
+  | "clear-all";
+export type FingerName = "thumb" | "index" | "middle" | "ring" | "pinky";
 export type Handedness = "Left" | "Right" | "Unknown";
 export type HandIdentity = string;
-export type HandForceMode = "attract" | "repel" | "none";
+export type HandForceMode = "attract" | "none";
 export type HandPresenceStatus = "tracking" | "temporarily-lost";
 
 export type TrackingStatus =
@@ -49,8 +64,7 @@ export interface InteractionTuning {
   pinchEnterRatio: number;
   pinchExitRatio: number;
   fingerExtensionRatio: number;
-  impulseSpeed: number;
-  impulseCooldownMs: number;
+  fingerReleaseRatio: number;
   gestureHoldMs: number;
   clearHoldMs: number;
   clearCooldownMs: number;
@@ -59,6 +73,8 @@ export interface InteractionTuning {
   traceGlow: number;
   traceOpacity: number;
   forceMultiplier: number;
+  gravityStrength: number;
+  stretchSensitivity: number;
 }
 
 export interface TraceStyle {
@@ -80,9 +96,12 @@ export interface HandTrackSnapshot {
   handedness: Handedness;
   status: HandPresenceStatus;
   confidence: number;
-  gesture: HandGestureName;
+  pose: HandPoseName;
+  interaction: HandInteraction;
+  fingerCount: number;
+  stability: number;
   center: Point2D;
-  indexTip: Point2D;
+  cursorPoint: Point2D;
   velocity: Point2D;
   orientation: number;
   lastSeenAt: number;
@@ -90,11 +109,8 @@ export interface HandTrackSnapshot {
 
 export interface InteractionEvent {
   id: number;
-  type: "impulse" | "clear-all";
+  type: "clear-all";
   timestamp: number;
-  handId?: string;
-  center?: Point2D;
-  direction?: Point2D;
 }
 
 export interface HandTrackingDiagnostics {
@@ -117,26 +133,30 @@ export interface HandTrackingDiagnostics {
 export interface DetectedHand {
   id: string;
   handedness: Handedness;
+  pose: HandPoseName;
+  stablePose: HandPoseName;
+  interaction: HandInteraction;
   center: Point2D;
-  indexTip: Point2D;
+  cursorPoint: Point2D;
   pinchPoint: Point2D;
   orientation: number;
   confidence: number;
   openness: number;
-  gesture: HandGestureName;
+  fingerCount: number;
+  extendedFingers: FingerName[];
+  stability: number;
   forceMode: HandForceMode;
   isPinching: boolean;
   isFist: boolean;
+  isThumbOnly: boolean;
   isOpenPalm: boolean;
-  isIndexPointing: boolean;
   velocity: Point2D;
 }
 
-export interface Shockwave {
-  center: Point2D;
-  direction: Point2D;
-  strength: number;
-  age: number;
+export interface HandCursor {
+  handId: string;
+  position: Point2D;
+  mode: "CURSOR" | "TRACE";
 }
 
 export interface InteractionFrame {
@@ -146,6 +166,7 @@ export interface InteractionFrame {
   mouseActive: boolean;
   mousePressed: boolean;
   gesture: GestureName;
+  cursors: HandCursor[];
   tracePoints: Point2D[];
   strokes: PersistentStroke[];
   strokeVersion: number;
@@ -154,7 +175,6 @@ export interface InteractionFrame {
   clearActive: boolean;
   clearCooldownRemaining: number;
   events: InteractionEvent[];
-  shockwaves: Shockwave[];
   universeScale: number;
   universeRotation: number;
 }

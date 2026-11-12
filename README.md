@@ -49,20 +49,28 @@ in production.
 - The live camera preview appears beneath the title while tracking is active;
   frames are processed locally in your browser.
 - Use the tracking control to disconnect or resume ml5 HandPose tracking.
-- Point with an index finger to draw persistent TRACE strokes. An open palm
-  repels particles; a fist attracts them.
-- Move either hand quickly for a directional IMPULSE. Use both hands to
-  STRETCH and rotate the particle field; pinch with either hand for a localized
-  COLLAPSE.
-- Hold both hands in fists to trigger CLEAR ALL after the configured hold time.
-  The toolbar reset also clears drawings.
-- Open PARAMETERS to tune the field, gesture thresholds, drawing appearance,
-  impulse sensitivity, and CLEAR ALL timing.
+- **CURSOR:** Extend exactly one finger to position a cursor without affecting
+  particles or drawings.
+- **TRACE:** Extend exactly two fingers to draw smoothed, persistent strokes.
+  Strokes remain until cleared and are independent of transient particle trails.
+- **GRAVITY:** Close one hand into a fist to continuously attract nearby particles
+  toward that hand.
+- **STRETCH:** Show two open palms; their separation scales the particle field,
+  while their relative angle rotates it.
+- **COLLAPSE:** Make an OK sign: pinch thumb and index while extending the
+  middle, ring, and pinky fingers to create a localized attraction.
+- **CLEAR ALL:** Extend only the thumb on both hands and hold for the configured
+  duration to fade out every persistent TRACE stroke. A cooldown prevents
+  repeated clears until the pose is released.
+- Open **GESTURES** beside the tracking controls for the in-app legend. Open
+  **PARAMETERS** to tune gesture stability, cursor smoothing, drawing style,
+  gravity strength, stretch sensitivity, and CLEAR ALL timing.
 - Use the toolbar to pause, reset, capture a PNG, toggle fullscreen, or hide
   the interface. Press `H` to show the interface and `Escape` to restore it.
 - Enable **DEBUG** beside the tracking control to show camera diagnostics,
-  both landmark sets, per-hand identity/gesture/position/velocity, force modes,
-  and recent interaction events; disable it with **DEBUG OFF** when finished.
+  both landmark sets, per-hand identity/pose/position/velocity, confidence,
+  stability, force modes, and recent interaction events; disable it with
+  **DEBUG OFF** when finished.
 
 When the experience opens, the browser requests webcam permission. If permission
 is denied or a camera is unavailable, pointer interaction remains available.

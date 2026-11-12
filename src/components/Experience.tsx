@@ -38,6 +38,7 @@ const initialInteraction: InteractionFrame = {
   mouseActive: false,
   mousePressed: false,
   gesture: "IDLE",
+  cursors: [],
   tracePoints: [],
   strokes: [],
   strokeVersion: 0,
@@ -46,20 +47,28 @@ const initialInteraction: InteractionFrame = {
   clearActive: false,
   clearCooldownRemaining: 0,
   events: [],
-  shockwaves: [],
   universeScale: 1,
   universeRotation: 0,
 };
 
 const gestureLabels: Record<GestureName, string> = {
   IDLE: "Move to disturb the field",
-  TRACE: "TRACE · Point with your index finger",
-  GRAVITY: "GRAVITY · Open palm repels · Fist attracts",
-  IMPULSE: "IMPULSE · Move quickly",
-  STRETCH: "STRETCH · Move both hands",
-  COLLAPSE: "COLLAPSE · Pinch to gather",
-  "CLEAR ALL": "CLEAR ALL · Hold both fists",
+  CURSOR: "CURSOR · Extend one finger to position without disturbing the field",
+  TRACE: "TRACE · Extend two fingers to draw persistent strokes",
+  GRAVITY: "GRAVITY · Close one hand into a fist to attract particles",
+  STRETCH: "STRETCH · Open both palms and move them apart or together",
+  COLLAPSE: "COLLAPSE · Pinch thumb and index while extending the other three fingers",
+  "CLEAR ALL": "CLEAR ALL · Hold both thumbs extended",
 };
+
+const gestureLegend = [
+  { name: "CURSOR", cue: "1 FINGER", symbol: "1", description: "Move the cursor without affecting particles or drawings." },
+  { name: "TRACE", cue: "2 FINGERS", symbol: "2", description: "Draw persistent strokes with the two-finger brush." },
+  { name: "GRAVITY", cue: "CLOSED FIST", symbol: "F", description: "Attract nearby particles toward the center of that hand." },
+  { name: "STRETCH", cue: "2 OPEN PALMS", symbol: "OPEN ×2", description: "Move both open palms to scale and rotate the particle field." },
+  { name: "COLLAPSE", cue: "OK SIGN", symbol: "OK", description: "Pinch thumb to index while extending the middle, ring, and pinky fingers." },
+  { name: "CLEAR ALL", cue: "THUMBS ONLY · HOLD", symbol: "T ×2", description: "Extend only the thumb on each hand and hold to erase all persistent TRACE strokes." },
+] as const;
 
 const statusLabels: Record<TrackingStatus, string> = {
   idle: "MOUSE FIELD",
@@ -106,6 +115,8 @@ export default function Experience() {
   const staticFrameCanvasRef = useRef<HTMLCanvasElement>(null);
   const rootRef = useRef<HTMLElement>(null);
   const panelRef = useRef<HTMLElement>(null);
+  const gestureLegendTriggerRef = useRef<HTMLButtonElement>(null);
+  const gestureLegendCloseRef = useRef<HTMLButtonElement>(null);
   const lastGestureRef = useRef<GestureName>("IDLE");
   const lastDiagnosticsUpdateRef = useRef(0);
   const lastDebugInteractionUpdateRef = useRef(0);
@@ -119,6 +130,7 @@ export default function Experience() {
   const [isTracking, setIsTracking] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
+  const [isGestureLegendOpen, setIsGestureLegendOpen] = useState(false);
   const [isInterfaceVisible, setIsInterfaceVisible] = useState(true);
   const [hint, setHint] = useState("");
   const [debugEnabled, setDebugEnabled] = useState(false);
@@ -393,10 +405,10 @@ export default function Experience() {
       mouse: point,
       mouseActive: true,
       mousePressed: event.buttons > 0,
-      gesture: event.buttons > 0 ? "TRACE" : "GRAVITY",
+      gesture: event.buttons > 0 ? "TRACE" : "IDLE",
       tracePoints,
     };
-    const nextGesture = event.buttons > 0 ? "TRACE" : "GRAVITY";
+    const nextGesture = event.buttons > 0 ? "TRACE" : "IDLE";
     if (nextGesture !== lastGestureRef.current) {
       lastGestureRef.current = nextGesture;
       setActiveGesture(nextGesture);
@@ -448,11 +460,19 @@ export default function Experience() {
   }, [hint]);
 
   useEffect(() => {
+    if (isGestureLegendOpen) gestureLegendCloseRef.current?.focus();
+  }, [isGestureLegendOpen]);
+
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key.toLowerCase() === "h" && !event.repeat) {
         setIsInterfaceVisible((visible) => !visible);
       }
-      if (event.key === "Escape") setIsInterfaceVisible(true);
+      if (event.key === "Escape") {
+        setIsInterfaceVisible(true);
+        setIsGestureLegendOpen(false);
+        gestureLegendTriggerRef.current?.focus();
+      }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => {
@@ -571,7 +591,7 @@ export default function Experience() {
                       x={track.center.x + 0.018}
                       y={track.center.y}
                     >
-                      {track.handedness.toUpperCase()} · {track.gesture}
+                      {track.handedness.toUpperCase()} · {track.pose} · {track.interaction}
                     </text>
                   )}
                 </g>
@@ -625,21 +645,21 @@ export default function Experience() {
               return (
                 <span key={`track-${track.id}`}>
                   {track.handedness === "Unknown" ? track.id : track.handedness} · {track.status} ·{" "}
-                  {track.gesture} · confidence {(track.confidence * 100).toFixed(0)}% ·{" "}
-                  center {track.center.x.toFixed(2)}, {track.center.y.toFixed(2)} ·{" "}
-                  tip {track.indexTip.x.toFixed(2)}, {track.indexTip.y.toFixed(2)} ·{" "}
+                  {track.pose} · {track.interaction} · {track.fingerCount} fingers ·{" "}
+                  confidence {(track.confidence * 100).toFixed(0)}% · stability{" "}
+                  {(track.stability * 100).toFixed(0)}% · center{" "}
+                  {track.center.x.toFixed(2)}, {track.center.y.toFixed(2)} ·{" "}
+                  cursor {track.cursorPoint.x.toFixed(2)}, {track.cursorPoint.y.toFixed(2)} ·{" "}
                   velocity {track.velocity.x.toFixed(2)}, {track.velocity.y.toFixed(2)} ·{" "}
-                  angle {track.orientation.toFixed(2)} rad · force {hand?.forceMode ?? "none"}
+                  angle {track.orientation.toFixed(2)} rad ·{" "}
+                  fingers {hand?.extendedFingers.join(", ") || "none"} · force{" "}
+                  {hand?.forceMode ?? "none"}
                 </span>
               );
             })}
             {debugInteraction?.events.map((event) => (
               <span key={`event-${event.id}`}>
                 EVENT {event.type.toUpperCase()}
-                {event.handId ? ` · ${event.handId}` : ""}
-                {event.direction
-                  ? ` · direction ${event.direction.x.toFixed(2)}, ${event.direction.y.toFixed(2)}`
-                  : ""}
               </span>
             ))}
             {debugInteraction && (
@@ -729,6 +749,58 @@ export default function Experience() {
             >
               DEBUG {debugEnabled ? "ON" : "OFF"}
             </button>
+            <button
+              aria-controls="gesture-legend-panel"
+              aria-expanded={isGestureLegendOpen}
+              className="tracking-toggle gesture-legend-toggle"
+              onClick={() => setIsGestureLegendOpen((open) => !open)}
+              ref={gestureLegendTriggerRef}
+              title={isGestureLegendOpen ? "Close gesture legend" : "Open gesture legend"}
+              type="button"
+            >
+              GESTURES
+            </button>
+            <section
+              aria-labelledby="gesture-legend-title"
+              className="gesture-legend"
+              hidden={!isGestureLegendOpen}
+              id="gesture-legend-panel"
+              role="dialog"
+            >
+              <div className="gesture-legend-heading">
+                <div>
+                  <span>INTERACTION KEY</span>
+                  <h2 id="gesture-legend-title">Ways of touching the field</h2>
+                </div>
+                <button
+                  aria-label="Close gesture legend"
+                  className="icon-button"
+                  ref={gestureLegendCloseRef}
+                  onClick={() => {
+                    setIsGestureLegendOpen(false);
+                    gestureLegendTriggerRef.current?.focus();
+                  }}
+                  type="button"
+                >
+                  ×
+                </button>
+              </div>
+              <ul>
+                {gestureLegend.map((entry) => (
+                  <li key={entry.name}>
+                    <span aria-hidden="true" className="gesture-legend-cue">
+                      {entry.symbol}
+                    </span>
+                    <div>
+                      <h3>
+                        {entry.name} <span>{entry.cue}</span>
+                      </h3>
+                      <p>{entry.description}</p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </section>
           </section>
 
           <div aria-live="polite" className="gesture-readout">
@@ -820,11 +892,11 @@ export default function Experience() {
             {renderTuningSlider("gestureHoldMs", "GESTURE HOLD", (value) =>
               `${Math.round(value)} ms`,
             )}
-            {renderTuningSlider("impulseSpeed", "IMPULSE SENSITIVITY")}
-            {renderTuningSlider("impulseCooldownMs", "IMPULSE COOLDOWN", (value) =>
-              `${Math.round(value)} ms`,
-            )}
             {renderTuningSlider("forceMultiplier", "HAND FORCE")}
+            {renderTuningSlider("gravityStrength", "GRAVITY STRENGTH", (value) =>
+              `${Math.round(value)} px/s²`,
+            )}
+            {renderTuningSlider("stretchSensitivity", "STRETCH SENSITIVITY")}
             {renderTuningSlider("traceSpacing", "TRACE DENSITY", (value) =>
               `${(1 / value).toFixed(0)} pts/unit`,
             )}

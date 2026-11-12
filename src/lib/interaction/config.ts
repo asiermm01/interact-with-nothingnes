@@ -10,13 +10,14 @@ export const INTERACTION_CONFIG = {
     maxFrameDeltaSeconds: 0.1,
   },
   gestures: {
-    smoothing: 0.34,
-    pinchEnterRatio: 0.34,
-    pinchExitRatio: 0.48,
+    smoothing: 0.55,
+    pinchEnterRatio: 0.3,
+    pinchExitRatio: 0.42,
     fingerExtensionRatio: 1.14,
-    impulseSpeed: 1.15,
-    impulseCooldownMs: 420,
-    gestureHoldMs: 140,
+    fingerReleaseRatio: 1.06,
+    fingerExtensionAngleDeg: 150,
+    fingerReleaseAngleDeg: 135,
+    gestureHoldMs: 110,
     clearHoldMs: 900,
     clearCooldownMs: 2400,
     clearFadeMs: 850,
@@ -30,20 +31,16 @@ export const INTERACTION_CONFIG = {
     color: "#9ad96c",
   },
   forces: {
-    rangeRatio: 0.24,
-    strength: 520,
-    collapseMultiplier: 2.6,
-    traceMultiplier: 0.3,
+    rangeRatio: 0.38,
+    gravityStrength: 1500,
+    collapseMultiplier: 3.2,
     maximumSpeed: 80,
   },
-  shockwave: {
-    lifetimeSeconds: 1.7,
-    decayPerFrame: 0.988,
-    radialRatio: 0.72,
-    directedRatio: 0.28,
-    forceStrength: 16,
-    bandSharpness: 0.045,
-    directionLength: 0.09,
+  stretch: {
+    baselineSeparation: 0.4,
+    sensitivity: 1.8,
+    minimumScale: 0.68,
+    maximumScale: 1.55,
   },
 } as const;
 
@@ -59,8 +56,7 @@ export const INTERACTION_TUNING_DEFAULTS: InteractionTuning = {
   pinchEnterRatio: INTERACTION_CONFIG.gestures.pinchEnterRatio,
   pinchExitRatio: INTERACTION_CONFIG.gestures.pinchExitRatio,
   fingerExtensionRatio: INTERACTION_CONFIG.gestures.fingerExtensionRatio,
-  impulseSpeed: INTERACTION_CONFIG.gestures.impulseSpeed,
-  impulseCooldownMs: INTERACTION_CONFIG.gestures.impulseCooldownMs,
+  fingerReleaseRatio: INTERACTION_CONFIG.gestures.fingerReleaseRatio,
   gestureHoldMs: INTERACTION_CONFIG.gestures.gestureHoldMs,
   clearHoldMs: INTERACTION_CONFIG.gestures.clearHoldMs,
   clearCooldownMs: INTERACTION_CONFIG.gestures.clearCooldownMs,
@@ -69,6 +65,8 @@ export const INTERACTION_TUNING_DEFAULTS: InteractionTuning = {
   traceGlow: INTERACTION_CONFIG.drawing.glow,
   traceOpacity: INTERACTION_CONFIG.drawing.opacity,
   forceMultiplier: 1,
+  gravityStrength: INTERACTION_CONFIG.forces.gravityStrength,
+  stretchSensitivity: INTERACTION_CONFIG.stretch.sensitivity,
 };
 
 export const INTERACTION_TUNING_RANGES: Record<keyof InteractionTuning, SettingRange> = {
@@ -77,8 +75,7 @@ export const INTERACTION_TUNING_RANGES: Record<keyof InteractionTuning, SettingR
   pinchEnterRatio: { min: 0.18, max: 0.65, step: 0.01 },
   pinchExitRatio: { min: 0.28, max: 0.8, step: 0.01 },
   fingerExtensionRatio: { min: 1.02, max: 1.4, step: 0.01 },
-  impulseSpeed: { min: 0.2, max: 2.5, step: 0.05 },
-  impulseCooldownMs: { min: 250, max: 2000, step: 50 },
+  fingerReleaseRatio: { min: 1, max: 1.3, step: 0.01 },
   gestureHoldMs: { min: 80, max: 600, step: 20 },
   clearHoldMs: { min: 500, max: 2000, step: 50 },
   clearCooldownMs: { min: 1000, max: 6000, step: 100 },
@@ -87,6 +84,8 @@ export const INTERACTION_TUNING_RANGES: Record<keyof InteractionTuning, SettingR
   traceGlow: { min: 0, max: 32, step: 1 },
   traceOpacity: { min: 0.2, max: 1, step: 0.05 },
   forceMultiplier: { min: 0.25, max: 2, step: 0.05 },
+  gravityStrength: { min: 300, max: 3000, step: 100 },
+  stretchSensitivity: { min: 0.5, max: 2.5, step: 0.1 },
 };
 
 export const DEFAULT_USER_SETTINGS: UserSettings = {

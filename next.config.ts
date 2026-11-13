@@ -1,12 +1,21 @@
 import type { NextConfig } from "next";
-import { PHASE_DEVELOPMENT_SERVER } from "next/constants";
 
-// La exportación genera archivos estáticos; en desarrollo Next sirve los
-// recursos desde la raíz y en producción se usan rutas relativas.
-const nextConfig = (phase: string): NextConfig => ({
+const nextConfig: NextConfig = {
+  // Genera una versión estática de la web
   output: "export",
-  assetPrefix: phase === PHASE_DEVELOPMENT_SERVER ? undefined : ".",
+
+  // Ruta del repositorio en GitHub Pages
+  basePath: "/onewithnothingness.ai",
+
+  // Facilita la resolución de rutas
+  trailingSlash: true,
+
+  // Desactiva la optimización de imágenes del servidor
+  images: {
+    unoptimized: true,
+  },
+
   reactStrictMode: true,
-});
+};
 
 export default nextConfig;

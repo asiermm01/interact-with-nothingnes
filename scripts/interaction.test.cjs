@@ -14,6 +14,8 @@ require.extensions[".ts"] = (module, filename) => {
 const { GestureRecognizer } = require("../src/lib/interaction/gesture-recognition.ts");
 const { INTERACTION_CONFIG, INTERACTION_TUNING_DEFAULTS, particleCountForDensity } = require("../src/lib/interaction/config.ts");
 const { createFieldTransform, transformFieldPoint } = require("../src/lib/interaction/field-transform.ts");
+const { getHandStatuses } = require("../src/lib/interaction/hand-status.ts");
+const { createParticleColor, particleColorAt } = require("../src/lib/rendering/particle-colors.ts");
 
 const viewport = { width: 1000, height: 500 };
 const tuning = { ...INTERACTION_TUNING_DEFAULTS, smoothing: 1 };
@@ -125,4 +127,34 @@ test("particle density is bounded and rejects invalid values", () => {
   assert.equal(particleCountForDensity(-10), 0);
   assert.throws(() => particleCountForDensity(Number.NaN), /finite/);
   assert.throws(() => particleCountForDensity(Infinity), /finite/);
+});
+
+test("hand statuses reflect each hand's active interaction independently", () => {
+  const { tick, pair } = harness();
+  assert.deepEqual(getHandStatuses([]), { left: "NOT DETECTED", right: "NOT DETECTED" });
+  let frame = tick([hand(0.3, 0.5, "Left", ["index"]), hand(0.7, 0.5, "Right", ["index", "middle"])]);
+  assert.deepEqual(getHandStatuses(frame.hands), { left: "CURSOR", right: "TRACE" });
+  frame = tick([hand(0.3, 0.5, "Left", ["index", "middle", "ring"])], 10);
+  assert.deepEqual(getHandStatuses(frame.hands), { left: "IDLE", right: "NOT DETECTED" });
+  frame = tick(pair(0.3, 0.7), 10);
+  assert.deepEqual(getHandStatuses(frame.hands), { left: "STRETCH", right: "STRETCH" });
+  assert.deepEqual(getHandStatuses([{ handedness: "Unknown", interaction: "trace" }]),
+    { left: "NOT IDENTIFIED", right: "NOT IDENTIFIED" });
+});
+
+test("particle colors hold independently and transition smoothly without frame-by-frame randomness", () => {
+  const state = { from: 0, to: 1, transitionAt: 10, duration: 4 };
+  let randomCalls = 0;
+  const random = () => { randomCalls += 1; return 0.5; };
+  const initial = particleColorAt(state, 1, "nebula", random);
+  assert.equal(particleColorAt(state, 10, "nebula", random), initial);
+  const middle = particleColorAt(state, 12, "nebula", random);
+  assert.notEqual(middle, initial);
+  assert.equal(randomCalls, 0);
+  const target = particleColorAt(state, 14, "nebula", random);
+  assert.notEqual(target, middle);
+  assert.equal(particleColorAt(state, 15, "nebula", random), target);
+  assert.equal(randomCalls, 3);
+  assert.equal(particleColorAt(state, 15, "monochrome", random), "#f2f0f5");
+  assert.notDeepEqual(createParticleColor(0, () => 0.1), createParticleColor(0, () => 0.8));
 });

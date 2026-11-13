@@ -8,6 +8,7 @@ import type {
   UserSettings,
 } from "../interaction/types";
 import { INTERACTION_CONFIG, particleCountForDensity } from "../interaction/config";
+import { createParticleColor, particleColorAt, type ParticleColorState } from "./particle-colors";
 import {
   createFieldTransform,
   inverseTransformFieldPoint,
@@ -100,7 +101,6 @@ interface EngineOptions {
   interactionRef: { current: InteractionFrame };
   settingsRef: { current: UserSettings };
   onReady: (handle: ParticleCanvasHandle) => void;
-  onQuality: (quality: string) => void;
 }
 
 export interface ParticlePerformanceSnapshot {
@@ -134,6 +134,7 @@ interface ParticleBuffers {
   size: Float32Array;
   phase: Float32Array;
   alpha: Float32Array;
+  color: ParticleColorState[];
 }
 
 const clamp = (value: number, min: number, max: number) =>
@@ -300,7 +301,7 @@ const drawStrokePoint = (
   context.shadowBlur = style.glow;
   context.globalAlpha = style.opacity;
   context.beginPath();
-  context.arc(x, y, Math.max(0.8, style.thickness * 0.45), 0, Math.PI * 2);
+  context.arc(x, y, Math.max(0.45, style.thickness * 0.45), 0, Math.PI * 2);
   context.fill();
   context.restore();
 };
@@ -322,7 +323,7 @@ const drawStroke = (
   cache: Map<string, CachedStrokePaths>,
 ) => {
   if (!stroke.points[0]) return;
-  const radius = Math.max(0.8, style.thickness * 0.45);
+  const radius = Math.max(0.45, style.thickness * 0.45);
   let paths = cache.get(stroke.id);
   if (!paths || paths.points !== stroke.points || paths.count > stroke.points.length || paths.radius !== radius) {
     paths = { points: stroke.points, count: 0, radius, line: new Path2D(), dots: new Path2D() };
@@ -377,15 +378,11 @@ const applyFieldTransform = (
   );
 };
 
-const particleColors = ["#5620e9", "#a08abf", "#9ad96c", "#d9ad29"];
-const filamentColors = ["#9ad96c", "#a08abf", "#9ad96c", "#f2f0f5"];
-
 export async function createParticleEngine({
   container,
   interactionRef,
   settingsRef,
   onReady,
-  onQuality,
 }: EngineOptions): Promise<() => void> {
   const [p5Module, gsapModule] = await Promise.all([import("p5"), import("gsap")]);
   const P5 = p5Module.default;
@@ -429,6 +426,7 @@ export async function createParticleEngine({
   let lastMouseTrailSample: TrailSample | null = null;
 
   const initializeParticles = (buffers: ParticleBuffers, start: number, end: number, width: number, height: number) => {
+    const now = instance ? instance.millis() * 0.001 : 0;
     for (let index = start; index < end; index += 1) {
       const angle = Math.random() * Math.PI * 2;
       const radius = Math.pow(Math.random(), 0.66) * 0.54;
@@ -439,6 +437,7 @@ export async function createParticleEngine({
       buffers.size[index] = Math.random() * 2.1 + 0.7;
       buffers.phase[index] = Math.random() * 1000;
       buffers.alpha[index] = 1;
+      buffers.color[index] = createParticleColor(now);
     }
   };
 
@@ -455,6 +454,7 @@ export async function createParticleEngine({
       size: new Float32Array(capacity),
       phase: new Float32Array(capacity),
       alpha: new Float32Array(capacity),
+      color: new Array<ParticleColorState>(capacity),
     };
     initializeParticles(buffers, 0, count, width, height);
     initializedParticleCount = count;
@@ -588,7 +588,6 @@ export async function createParticleEngine({
         };
         window.__particleDiagnostics = diagnostics;
       }
-      onQuality(pixelRatio > 1.25 ? "FULL" : "EFFICIENT");
       onReady({
         pause: () => {
           paused = true;
@@ -840,10 +839,7 @@ export async function createParticleEngine({
         ) continue;
         renderedParticles += 1;
         const phase = particles.phase[index];
-        const colorIndex = Math.floor((phase + now * 7) % 4);
-        particleContext.fillStyle = mode === "monochrome"
-          ? "#f2f0f5"
-          : mode === "filament" ? filamentColors[colorIndex] : particleColors[colorIndex];
+        particleContext.fillStyle = particleColorAt(particles.color[index], now, mode);
         particleContext.globalAlpha = clamp(
           ((80 + Math.sin(shimmerTime + phase) * 45) * particles.alpha[index]) / 255,
           0,

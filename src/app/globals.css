@@ -85,20 +85,20 @@ button {
 .camera-preview {
   position: absolute;
   z-index: 1;
-  top: clamp(88px, 9.5vh, 108px);
+  top: clamp(110px, 12vh, 128px);
   left: clamp(24px, 4vw, 52px);
   width: 180px;
-  aspect-ratio: 4 / 3;
-  overflow: hidden;
   margin: 0;
-  border: 1px solid rgba(242, 240, 245, 0.22);
-  background: rgba(11, 10, 16, 0.76);
   pointer-events: none;
   transition: opacity 180ms ease, visibility 180ms ease;
 }
 
-.camera-preview[data-debug="true"] {
-  overflow: visible;
+.camera-window {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border: 1px solid rgba(242, 240, 245, 0.22);
+  background: rgba(11, 10, 16, 0.76);
 }
 
 .camera-preview[data-visible="false"] {
@@ -119,112 +119,15 @@ button {
   opacity: 1;
 }
 
-.camera-preview[data-debug="true"] .camera-feed {
-  object-fit: fill;
-}
-
-.hand-landmark-overlay {
-  position: absolute;
-  z-index: 2;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-  pointer-events: none;
-}
-
-.hand-landmark-overlay circle {
-  fill: var(--acid);
-  stroke: var(--void);
-  stroke-width: 0.003;
-}
-
-.hand-landmark-overlay .landmark-anchor {
-  fill: var(--yellow);
-}
-
-.hand-landmark-overlay .left-hand-landmarks .landmark-anchor {
-  fill: var(--acid);
-}
-
-.hand-landmark-overlay .right-hand-landmarks .landmark-anchor {
-  fill: var(--yellow);
-}
-
-.hand-landmark-overlay text {
-  fill: var(--paper);
-  font-family: var(--mono);
-  font-size: 0.42rem;
-  paint-order: stroke;
-  stroke: var(--void);
-  stroke-width: 0.002;
-  text-anchor: start;
-}
-
-.hand-landmark-overlay .hand-track-label {
-  fill: var(--acid);
-  font-size: 0.55rem;
-  letter-spacing: 0.04em;
-}
-
-.hand-landmark-overlay .right-hand-landmarks .hand-track-label {
-  fill: var(--yellow);
-}
-
-.tracking-diagnostics {
-  position: absolute;
-  z-index: 4;
-  top: calc(100% + 8px);
-  left: -1px;
+.hand-status {
   display: grid;
-  width: min(320px, calc(100vw - 36px));
-  max-height: 42vh;
   gap: 5px;
-  overflow: auto;
-  padding: 10px 12px;
-  border: 1px solid rgba(154, 217, 108, 0.4);
-  background: rgba(7, 7, 11, 0.94);
-  color: rgba(242, 240, 245, 0.82);
+  margin-top: 9px;
+  color: rgba(242, 240, 245, 0.72);
   font-family: var(--mono);
-  font-size: 0.5rem;
-  line-height: 1.5;
-  pointer-events: auto;
-}
-
-.tracking-diagnostics p {
-  margin: 0 0 2px;
-  color: var(--acid);
-  letter-spacing: 0.1em;
-}
-
-.tracking-diagnostics span {
-  overflow-wrap: anywhere;
-}
-
-.tracking-diagnostics .diagnostic-error {
-  color: var(--yellow);
-}
-
-.diagnostic-test-button {
-  margin: 4px 0 0;
-  padding: 7px 8px;
-  font-size: 0.46rem;
-}
-
-.diagnostic-test-button:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.static-frame-preview {
-  display: none;
-  width: 100%;
-  height: auto;
-  border: 1px solid rgba(242, 240, 245, 0.2);
-}
-
-.static-frame-preview[data-captured="true"] {
-  display: block;
+  font-size: 0.59rem;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
 }
 
 .camera-placeholder {
@@ -238,7 +141,7 @@ button {
   letter-spacing: 0.12em;
 }
 
-.camera-preview figcaption {
+.camera-caption {
   position: absolute;
   right: 0;
   bottom: 0;
@@ -251,7 +154,7 @@ button {
   letter-spacing: 0.08em;
 }
 
-.camera-preview[data-active="true"] figcaption {
+.camera-preview[data-active="true"] .camera-caption {
   color: var(--acid);
 }
 
@@ -438,22 +341,27 @@ button {
 
 .gesture-legend li {
   display: grid;
-  grid-template-columns: 48px 1fr;
+  grid-template-columns: 58px 1fr;
   align-items: center;
   gap: 11px;
 }
 
 .gesture-legend-cue {
   display: grid;
-  min-height: 36px;
+  min-height: 48px;
   place-items: center;
   border: 1px solid rgba(154, 217, 108, 0.28);
   background: rgba(154, 217, 108, 0.055);
   color: var(--acid);
-  font-family: var(--mono);
-  font-size: 0.48rem;
-  letter-spacing: 0.04em;
+  font-family: "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif;
+  font-size: 1.65rem;
+  line-height: 1;
   text-align: center;
+  white-space: nowrap;
+}
+
+.gesture-legend-cue-pair {
+  font-size: 1.25rem;
 }
 
 .gesture-legend h3 {
@@ -498,12 +406,6 @@ button {
 
 .gesture-readout p {
   margin: 0;
-}
-
-.gesture-readout > span:last-child {
-  color: rgba(242, 240, 245, 0.36);
-  font-size: 0.49rem;
-  white-space: nowrap;
 }
 
 .readout-line {
@@ -776,15 +678,19 @@ button {
   }
 
   .camera-preview {
-    top: 72px;
+    top: 80px;
     left: 18px;
     width: 124px;
   }
 
+  .hand-status {
+    font-size: 0.49rem;
+  }
+
   .tracking {
-    top: 172px;
+    top: 80px;
     right: 18px;
-    left: 18px;
+    left: 158px;
     flex-wrap: wrap;
     justify-content: flex-end;
   }
@@ -801,19 +707,9 @@ button {
     font-size: 0.48rem;
   }
 
-  .debug-toggle {
-    margin-left: 0;
-    padding-inline: 5px;
-    font-size: 0.42rem;
-  }
-
   .gesture-readout {
     bottom: 106px;
     font-size: 0.5rem;
-  }
-
-  .gesture-readout > span:last-child {
-    display: none;
   }
 
   .toolbar {
@@ -857,8 +753,22 @@ button {
     width: 108px;
   }
 
+  .hand-status {
+    font-size: 0.43rem;
+    letter-spacing: 0;
+  }
+
+  .gesture-legend li {
+    grid-template-columns: 50px 1fr;
+  }
+
+  .gesture-legend-cue {
+    font-size: 1.45rem;
+  }
+
   .tracking {
     gap: 7px;
+    left: 142px;
   }
 
   .tracking-toggle {

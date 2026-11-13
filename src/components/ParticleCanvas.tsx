@@ -12,7 +12,6 @@ interface ParticleCanvasProps {
   interactionRef: { current: InteractionFrame };
   settingsRef: { current: UserSettings };
   onReady: (handle: ParticleCanvasHandle) => void;
-  onQuality: (quality: string) => void;
   onError: (message: string) => void;
 }
 
@@ -20,12 +19,11 @@ export default function ParticleCanvas({
   interactionRef,
   settingsRef,
   onReady,
-  onQuality,
   onError,
 }: ParticleCanvasProps) {
   const mountRef = useRef<HTMLDivElement>(null);
-  const callbacksRef = useRef({ onReady, onQuality, onError });
-  callbacksRef.current = { onReady, onQuality, onError };
+  const callbacksRef = useRef({ onReady, onError });
+  callbacksRef.current = { onReady, onError };
 
   useEffect(() => {
     const container = mountRef.current;
@@ -38,7 +36,6 @@ export default function ParticleCanvas({
       interactionRef,
       settingsRef,
       onReady: (handle) => callbacksRef.current.onReady(handle),
-      onQuality: (quality) => callbacksRef.current.onQuality(quality),
     })
       .then((cleanup) => {
         if (disposed) {

@@ -113,23 +113,6 @@ export interface InteractionEvent {
   timestamp: number;
 }
 
-export interface HandTrackingDiagnostics {
-  cameraPermission: "unknown" | "granted" | "denied" | "unavailable";
-  videoReady: boolean;
-  videoWidth: number;
-  videoHeight: number;
-  videoCurrentTime: number;
-  videoPaused: boolean;
-  videoFrameCount: number;
-  modelLoaded: boolean;
-  detectionActive: boolean;
-  inferenceBackend: string;
-  detectionFrames: number;
-  lastDetectionAt: number | null;
-  hands: HandObservation[];
-  error: string;
-}
-
 export interface DetectedHand {
   id: string;
   handedness: Handedness;

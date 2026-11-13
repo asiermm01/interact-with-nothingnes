@@ -9,8 +9,8 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { GestureRecognizer } from "@/lib/interaction/gesture-recognition";
+import { getHandStatuses } from "@/lib/interaction/hand-status";
 import { HandTracker } from "@/lib/interaction/hand-tracker";
-import type { ParticlePerformanceSnapshot } from "@/lib/rendering/particle-engine";
 import {
   DEFAULT_USER_SETTINGS,
   INTERACTION_CONFIG,
@@ -19,7 +19,6 @@ import {
 import type {
   GestureName,
   HandObservation,
-  HandTrackingDiagnostics,
   InteractionFrame,
   InteractionTuning,
   ParticleCanvasHandle,
@@ -63,12 +62,12 @@ const gestureLabels: Record<GestureName, string> = {
 };
 
 const gestureLegend = [
-  { name: "CURSOR", cue: "1 FINGER", symbol: "1", description: "Move the cursor without affecting particles or drawings." },
-  { name: "TRACE", cue: "2 FINGERS", symbol: "2", description: "Draw persistent strokes with the two-finger brush." },
-  { name: "GRAVITY", cue: "CLOSED FIST", symbol: "F", description: "Attract nearby particles toward the center of that hand." },
-  { name: "STRETCH", cue: "2 OPEN PALMS", symbol: "OPEN ×2", description: "Move both open palms to scale and rotate the particle field." },
-  { name: "COLLAPSE", cue: "OK SIGN", symbol: "OK", description: "Pinch thumb to index while extending the middle, ring, and pinky fingers." },
-  { name: "CLEAR ALL", cue: "THUMBS ONLY · HOLD", symbol: "T ×2", description: "Extend only the thumb on each hand and hold to erase all persistent TRACE strokes." },
+  { name: "CURSOR", cue: "1 FINGER", symbol: "☝️", description: "Move the cursor without affecting particles or drawings." },
+  { name: "TRACE", cue: "2 FINGERS", symbol: "✌️", description: "Draw persistent strokes with the two-finger brush." },
+  { name: "GRAVITY", cue: "CLOSED FIST", symbol: "✊", description: "Attract nearby particles toward the center of that hand." },
+  { name: "STRETCH", cue: "2 OPEN PALMS", symbol: "🙌", description: "Move both open palms to scale and rotate the particle field." },
+  { name: "COLLAPSE", cue: "OK SIGN", symbol: "👌", description: "Pinch thumb to index while extending the middle, ring, and pinky fingers." },
+  { name: "CLEAR ALL", cue: "THUMBS ONLY · HOLD", symbol: "👍👍", description: "Extend only the thumb on each hand and hold to erase all persistent TRACE strokes." },
 ] as const;
 
 const statusLabels: Record<TrackingStatus, string> = {
@@ -81,23 +80,6 @@ const statusLabels: Record<TrackingStatus, string> = {
   denied: "CAMERA DECLINED",
   unavailable: "CAMERA UNAVAILABLE",
   error: "TRACKING ERROR",
-};
-
-const initialDiagnostics: HandTrackingDiagnostics = {
-  cameraPermission: "unknown",
-  videoReady: false,
-  videoWidth: 0,
-  videoHeight: 0,
-  videoCurrentTime: 0,
-  videoPaused: true,
-  videoFrameCount: 0,
-  modelLoaded: false,
-  detectionActive: false,
-  inferenceBackend: "not initialized",
-  detectionFrames: 0,
-  lastDetectionAt: null,
-  hands: [],
-  error: "",
 };
 
 export default function Experience() {
@@ -113,36 +95,25 @@ export default function Experience() {
   const trackerRef = useRef<HandTracker | null>(null);
   const recognizerRef = useRef(new GestureRecognizer());
   const videoRef = useRef<HTMLVideoElement>(null);
-  const staticFrameCanvasRef = useRef<HTMLCanvasElement>(null);
   const rootRef = useRef<HTMLElement>(null);
   const panelRef = useRef<HTMLElement>(null);
   const gestureLegendTriggerRef = useRef<HTMLButtonElement>(null);
   const gestureLegendCloseRef = useRef<HTMLButtonElement>(null);
   const lastGestureRef = useRef<GestureName>("IDLE");
-  const lastDiagnosticsUpdateRef = useRef(0);
-  const lastDebugInteractionUpdateRef = useRef(0);
-  const diagnosticsRef = useRef(initialDiagnostics);
-  const debugEnabledRef = useRef(false);
   const [settings, setSettings] = useState(DEFAULT_USER_SETTINGS);
   const [trackingStatus, setTrackingStatus] = useState<TrackingStatus>("idle");
   const [statusMessage, setStatusMessage] = useState("");
   const [activeGesture, setActiveGesture] = useState<GestureName>("IDLE");
-  const [quality, setQuality] = useState("AUTO");
   const [isTracking, setIsTracking] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [isGestureLegendOpen, setIsGestureLegendOpen] = useState(false);
   const [isInterfaceVisible, setIsInterfaceVisible] = useState(true);
   const [hint, setHint] = useState("");
-  const [debugEnabled, setDebugEnabled] = useState(false);
-  const [diagnostics, setDiagnostics] = useState(initialDiagnostics);
-  const [staticTestResult, setStaticTestResult] = useState("");
-  const [staticFrameCaptured, setStaticFrameCaptured] = useState(false);
+  const [handStatuses, setHandStatuses] = useState(() => getHandStatuses([]));
   const [handSummary, setHandSummary] = useState("NO HANDS DETECTED");
   const [clearProgress, setClearProgress] = useState(0);
-  const [debugInteraction, setDebugInteraction] = useState<InteractionFrame | null>(null);
-  const [renderPerformance, setRenderPerformance] = useState<ParticlePerformanceSnapshot | null>(null);
-  debugEnabledRef.current = debugEnabled;
+  const handStatusesRef = useRef(handStatuses);
   const handSummaryRef = useRef("");
   const lastClearVersionRef = useRef(0);
   const lastClearProgressUpdateRef = useRef(0);
@@ -169,14 +140,6 @@ export default function Experience() {
 
   settingsRef.current = settings;
 
-  useEffect(() => {
-    if (process.env.NODE_ENV === "production" || !debugEnabled) return;
-    const update = () => setRenderPerformance(window.__particlePerformance?.() ?? null);
-    update();
-    const timer = window.setInterval(update, 1000);
-    return () => window.clearInterval(timer);
-  }, [debugEnabled]);
-
   const updateHands = useCallback((observations: HandObservation[]) => {
     const frame = recognizerRef.current.update(
       observations,
@@ -188,6 +151,14 @@ export default function Experience() {
     frame.mouseActive = interactionRef.current.mouseActive;
     frame.mousePressed = interactionRef.current.mousePressed;
     interactionRef.current = frame;
+    const nextStatuses = getHandStatuses(frame.hands);
+    if (
+      nextStatuses.left !== handStatusesRef.current.left ||
+      nextStatuses.right !== handStatusesRef.current.right
+    ) {
+      handStatusesRef.current = nextStatuses;
+      setHandStatuses(nextStatuses);
+    }
     if (frame.gesture !== lastGestureRef.current && frame.gesture !== "IDLE") {
       setHint(gestureLabels[frame.gesture]);
     }
@@ -225,13 +196,6 @@ export default function Experience() {
       handSummaryRef.current = nextSummary;
       setHandSummary(nextSummary);
     }
-    if (debugEnabledRef.current) {
-      const now = performance.now();
-      if (now - lastDebugInteractionUpdateRef.current >= 180) {
-        lastDebugInteractionUpdateRef.current = now;
-        setDebugInteraction(frame);
-      }
-    }
   }, []);
 
   const updateTrackingStatus = useCallback((status: TrackingStatus, message?: string) => {
@@ -250,6 +214,8 @@ export default function Experience() {
       lastGestureRef.current = "IDLE";
       handSummaryRef.current = "NO HANDS DETECTED";
       setHandSummary("NO HANDS DETECTED");
+      handStatusesRef.current = getHandStatuses([]);
+      setHandStatuses(handStatusesRef.current);
       clearProgressRef.current = 0;
       setClearProgress(0);
       setActiveGesture("IDLE");
@@ -270,30 +236,9 @@ export default function Experience() {
       console.info("[WEBCAM] Tracking is already starting or active.");
       return;
     }
-    diagnosticsRef.current = initialDiagnostics;
-    lastDiagnosticsUpdateRef.current = 0;
     handSummaryRef.current = "NO HANDS DETECTED";
-    setDiagnostics(initialDiagnostics);
-    setDebugInteraction(null);
     setHandSummary("NO HANDS DETECTED");
-    const tracker = new HandTracker(
-      video,
-      updateHands,
-      updateTrackingStatus,
-      (nextDiagnostics) => {
-        diagnosticsRef.current = nextDiagnostics;
-        if (!debugEnabledRef.current) return;
-        const now = performance.now();
-        if (
-          nextDiagnostics.detectionActive &&
-          now - lastDiagnosticsUpdateRef.current < 180
-        ) {
-          return;
-        }
-        lastDiagnosticsUpdateRef.current = now;
-        setDiagnostics(nextDiagnostics);
-      },
-    );
+    const tracker = new HandTracker(video, updateHands, updateTrackingStatus);
     trackerRef.current = tracker;
     const started = await tracker.start();
     if (!started) trackerRef.current = null;
@@ -310,32 +255,11 @@ export default function Experience() {
     setStatusMessage("");
     setActiveGesture("IDLE");
     setHandSummary("NO HANDS DETECTED");
-    setDebugInteraction(null);
+    handStatusesRef.current = getHandStatuses([]);
+    setHandStatuses(handStatusesRef.current);
     clearProgressRef.current = 0;
     setClearProgress(0);
   }, []);
-
-  const testCapturedFrame = async () => {
-    const canvas = staticFrameCanvasRef.current;
-    const tracker = trackerRef.current;
-    if (!canvas || !tracker) {
-      setStaticTestResult("Start camera tracking before testing a captured frame.");
-      return;
-    }
-
-    setStaticTestResult("Capturing the current camera frame and testing it…");
-    setStaticFrameCaptured(false);
-    try {
-      const count = await tracker.testCurrentFrame(canvas);
-      setStaticFrameCaptured(true);
-      setStaticTestResult(`Captured-frame inference found ${count} hand${count === 1 ? "" : "s"}.`);
-    } catch (error) {
-      console.error("[HANDPOSE STATIC TEST] Captured-frame inference failed:", error);
-      setStaticTestResult(
-        error instanceof Error ? `Static test failed: ${error.message}` : "Static test failed.",
-      );
-    }
-  };
 
   const changeSetting = <Key extends keyof UserSettings>(
     key: Key,
@@ -525,7 +449,6 @@ export default function Experience() {
       <ParticleCanvas
         interactionRef={interactionRef}
         onError={setStatusMessage}
-        onQuality={setQuality}
         onReady={(handle) => {
           engineRef.current = handle;
         }}
@@ -536,180 +459,28 @@ export default function Experience() {
         aria-label="Live camera preview for local hand tracking"
         className="camera-preview"
         data-active={hasCameraImage}
-        data-debug={debugEnabled}
         data-visible={isInterfaceVisible}
       >
-        <video
-          aria-label="Mirrored live camera image used for hand tracking"
-          autoPlay
-          className="camera-feed"
-          muted
-          playsInline
-          ref={videoRef}
-        />
-        {debugEnabled && diagnostics.hands.length > 0 && (
-          <svg
-            aria-hidden="true"
-            className="hand-landmark-overlay"
-            preserveAspectRatio="none"
-            viewBox="0 0 1 1"
-          >
-            {diagnostics.hands.map((hand, handIndex) => {
-              const label = hand.handedness?.toLowerCase();
-              const track = debugInteraction?.tracking.find(
-                (candidate) =>
-                  candidate.status === "tracking" &&
-                  candidate.handedness.toLowerCase() === label,
-              );
-              return (
-                <g
-                  className={track?.handedness === "Left" ? "left-hand-landmarks" : "right-hand-landmarks"}
-                  key={`${track?.id ?? hand.handedness ?? "hand"}-${handIndex}`}
-                >
-                  {hand.keypoints.map((point) => {
-                    const isAnchor =
-                      point.name === "wrist" ||
-                      point.name.endsWith("_finger_tip") ||
-                      point.name === "thumb_tip";
-                    return (
-                      <g key={point.name}>
-                        <circle
-                          className={isAnchor ? "landmark-anchor" : "landmark-point"}
-                          cx={point.x}
-                          cy={point.y}
-                          r={isAnchor ? 0.012 : 0.006}
-                        />
-                        {isAnchor && (
-                          <text x={point.x + 0.012} y={point.y - 0.012}>
-                            {point.name.replace("_finger", "")}
-                          </text>
-                        )}
-                      </g>
-                    );
-                  })}
-                  {track && (
-                    <text
-                      className="hand-track-label"
-                      x={track.center.x + 0.018}
-                      y={track.center.y}
-                    >
-                      {track.handedness.toUpperCase()} · {track.pose} · {track.interaction}
-                    </text>
-                  )}
-                </g>
-              );
-            })}
-          </svg>
-        )}
-        {!hasCameraImage && (
-          <span className="camera-placeholder">
-            {trackingStatus === "requesting" ? "CONNECTING" : "CAMERA OFF"}
-          </span>
-        )}
-        <figcaption>{hasCameraImage ? "LIVE INPUT · LOCAL ONLY" : "CAMERA PREVIEW"}</figcaption>
-        {debugEnabled && (
-          <div className="tracking-diagnostics" aria-live="polite">
-            <p>TRACKING DIAGNOSTICS</p>
-            {process.env.NODE_ENV !== "production" && renderPerformance && (
-              <>
-                <span>
-                  Render: {renderPerformance.fps?.toFixed(1) ?? "—"} FPS ·{" "}
-                  {renderPerformance.frameIntervalMs.toFixed(1)} ms/frame ·{" "}
-                  {renderPerformance.drawTimeMs.toFixed(1)} ms CPU draw
-                </span>
-                <span>
-                  Particles: {renderPerformance.count}/{renderPerformance.maximum} ·{" "}
-                  {renderPerformance.visible} visible · scale {renderPerformance.scale.toFixed(2)}× ·{" "}
-                  {renderPerformance.quality} quality
-                </span>
-                <span>
-                  Simulation: {renderPerformance.simulationTimeMs.toFixed(1)} ms ·{" "}
-                  TRACE: {renderPerformance.traceTimeMs.toFixed(1)} ms
-                </span>
-              </>
-            )}
-            <span>Camera permission: {diagnostics.cameraPermission}</span>
-            <span>
-              Video: {diagnostics.videoReady ? "ready" : "waiting"} ·{" "}
-              {diagnostics.videoWidth} × {diagnostics.videoHeight} · readyState{" "}
-              {videoRef.current?.readyState ?? 0} · t=
-              {diagnostics.videoCurrentTime.toFixed(2)}s ·{" "}
-              {diagnostics.videoPaused ? "paused" : "playing"} ·{" "}
-              {diagnostics.videoFrameCount} advancing frames
+        <div className="camera-window">
+          <video
+            aria-label="Mirrored live camera image used for hand tracking"
+            autoPlay
+            className="camera-feed"
+            muted
+            playsInline
+            ref={videoRef}
+          />
+          {!hasCameraImage && (
+            <span className="camera-placeholder">
+              {trackingStatus === "requesting" ? "CONNECTING" : "CAMERA OFF"}
             </span>
-            <span>
-              HandPose model: {diagnostics.modelLoaded ? "ready" : "loading"} · full · max two hands
-            </span>
-            <span>TensorFlow.js backend: {diagnostics.inferenceBackend}</span>
-            <span>
-              Inference: {diagnostics.detectionActive ? "active" : "stopped"} ·{" "}
-              {diagnostics.detectionFrames} frames
-              {diagnostics.lastDetectionAt
-                ? ` · ${Math.max(0, Math.round((Date.now() - diagnostics.lastDetectionAt) / 1000))}s ago`
-                : ""}
-            </span>
-            <span>Detected hands: {diagnostics.hands.length}</span>
-            {diagnostics.hands.map((hand, index) => (
-              <span key={`${hand.handedness ?? "hand"}-confidence-${index}`}>
-                Detection {index + 1}
-                {hand.handedness ? ` (${hand.handedness})` : ""}:{" "}
-                {Number.isFinite(hand.confidence)
-                  ? `${(hand.confidence * 100).toFixed(0)}% confidence`
-                  : "confidence unavailable"}{" "}
-                · {hand.keypoints.length} landmarks
-              </span>
-            ))}
-            <span>Gesture engine: {activeGesture}</span>
-            {debugInteraction?.tracking.map((track) => {
-              const hand = debugInteraction.hands.find((candidate) => candidate.id === track.id);
-              return (
-                <span key={`track-${track.id}`}>
-                  {track.handedness === "Unknown" ? track.id : track.handedness} · {track.status} ·{" "}
-                  {track.pose} · {track.interaction} · {track.fingerCount} fingers ·{" "}
-                  confidence {(track.confidence * 100).toFixed(0)}% · stability{" "}
-                  {(track.stability * 100).toFixed(0)}% · center{" "}
-                  {track.center.x.toFixed(2)}, {track.center.y.toFixed(2)} ·{" "}
-                  cursor {track.cursorPoint.x.toFixed(2)}, {track.cursorPoint.y.toFixed(2)} ·{" "}
-                  velocity {track.velocity.x.toFixed(2)}, {track.velocity.y.toFixed(2)} ·{" "}
-                  angle {track.orientation.toFixed(2)} rad ·{" "}
-                  fingers {hand?.extendedFingers.join(", ") || "none"} · force{" "}
-                  {hand?.forceMode ?? "none"}
-                </span>
-              );
-            })}
-            {debugInteraction?.events.map((event) => (
-              <span key={`event-${event.id}`}>
-                EVENT {event.type.toUpperCase()}
-              </span>
-            ))}
-            {debugInteraction && (
-              <span>
-                Stroke points: {debugInteraction.strokes.reduce(
-                  (total, stroke) => total + stroke.points.length,
-                  0,
-                )}{" "}
-                · clear hold {(debugInteraction.clearProgress * 100).toFixed(0)}% · clear cooldown{" "}
-                {(debugInteraction.clearCooldownRemaining / 1000).toFixed(1)}s
-              </span>
-            )}
-            {diagnostics.error && <span className="diagnostic-error">{diagnostics.error}</span>}
-            <button
-              className="tracking-toggle diagnostic-test-button"
-              disabled={!diagnostics.detectionActive}
-              onClick={() => void testCapturedFrame()}
-              type="button"
-            >
-              CAPTURE FRAME + TEST
-            </button>
-            <canvas
-              aria-label="Captured camera frame sent to static HandPose inference"
-              className="static-frame-preview"
-              data-captured={staticFrameCaptured}
-              ref={staticFrameCanvasRef}
-            />
-            {staticTestResult && <span>{staticTestResult}</span>}
-          </div>
-        )}
+          )}
+          <span className="camera-caption">{hasCameraImage ? "LIVE INPUT · LOCAL ONLY" : "CAMERA PREVIEW"}</span>
+        </div>
+        <figcaption aria-live="polite" className="hand-status">
+          <span>LEFT HAND — {handStatuses.left}</span>
+          <span>RIGHT HAND — {handStatuses.right}</span>
+        </figcaption>
       </figure>
 
       {!isInterfaceVisible && (
@@ -758,18 +529,6 @@ export default function Experience() {
               {isTracking ? "DISCONNECT" : "ENABLE HANDS"}
             </button>
             <button
-              aria-pressed={debugEnabled}
-              className="tracking-toggle debug-toggle"
-              onClick={() => {
-                const next = !debugEnabled;
-                if (next) setDiagnostics(diagnosticsRef.current);
-                setDebugEnabled(next);
-              }}
-              type="button"
-            >
-              DEBUG {debugEnabled ? "ON" : "OFF"}
-            </button>
-            <button
               aria-controls="gesture-legend-panel"
               aria-expanded={isGestureLegendOpen}
               className="tracking-toggle gesture-legend-toggle"
@@ -808,7 +567,10 @@ export default function Experience() {
               <ul>
                 {gestureLegend.map((entry) => (
                   <li key={entry.name}>
-                    <span aria-hidden="true" className="gesture-legend-cue">
+                    <span
+                      aria-hidden="true"
+                      className={`gesture-legend-cue${entry.name === "CLEAR ALL" ? " gesture-legend-cue-pair" : ""}`}
+                    >
                       {entry.symbol}
                     </span>
                     <div>
@@ -838,7 +600,6 @@ export default function Experience() {
                 <span style={{ width: `${clearProgress * 100}%` }} />
               </span>
             )}
-            <span>{quality} QUALITY</span>
           </div>
 
           {(statusMessage || hint) && (

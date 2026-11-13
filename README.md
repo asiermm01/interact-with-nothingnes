@@ -33,9 +33,6 @@ It also reports smoothed FPS, frame interval, CPU draw/simulation/TRACE time,
 visible and budgeted particle counts, scale, and rendering quality. CPU timings
 do not include all asynchronous GPU work. This diagnostic is available only in
 development.
-In development, enabling **DEBUG** also displays these lightweight performance
-measurements, refreshed once per second. Quality reflects the existing
-pixel-density setting; it does not adapt automatically.
 
 ## Open with VS Code Live Server
 
@@ -58,7 +55,8 @@ in production.
 
 - Move the pointer to disturb the field; press and drag to trace.
 - The live camera preview appears beneath the title while tracking is active;
-  frames are processed locally in your browser.
+  frames are processed locally in your browser. The two labels below the preview
+  show the current command for each identified hand.
 - Use the tracking control to disconnect or resume ml5 HandPose tracking.
 - **CURSOR:** Extend exactly one finger to position a cursor without affecting
   particles or drawings.
@@ -87,10 +85,6 @@ in production.
   gravity strength, stretch sensitivity, and CLEAR ALL timing.
 - Use the toolbar to pause, reset, capture a PNG, toggle fullscreen, or hide
   the interface. Press `H` to show the interface and `Escape` to restore it.
-- Enable **DEBUG** beside the tracking control to show camera diagnostics,
-  both landmark sets, per-hand identity/pose/position/velocity, confidence,
-  stability, force modes, and recent interaction events; disable it with
-  **DEBUG OFF** when finished.
 
 When the experience opens, the browser requests webcam permission. If permission
 is denied or a camera is unavailable, pointer interaction remains available.

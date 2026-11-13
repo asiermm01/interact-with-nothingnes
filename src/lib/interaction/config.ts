@@ -25,9 +25,9 @@ export const INTERACTION_CONFIG = {
   drawing: {
     spacing: 0.006,
     maxInterpolationSteps: 384,
-    thickness: 2,
-    glow: 7,
-    opacity: 0.62,
+    thickness: 1.1,
+    glow: 3,
+    opacity: 0.5,
     color: "#9ad96c",
   },
   trails: {
@@ -105,7 +105,7 @@ export const INTERACTION_TUNING_RANGES: Record<keyof InteractionTuning, SettingR
   clearHoldMs: { min: 500, max: 2000, step: 50 },
   clearCooldownMs: { min: 1000, max: 6000, step: 100 },
   traceSpacing: { min: 0.0015, max: 0.012, step: 0.0005 },
-  traceThickness: { min: 1, max: 12, step: 0.5 },
+  traceThickness: { min: 0.5, max: 6, step: 0.1 },
   traceGlow: { min: 0, max: 32, step: 1 },
   traceOpacity: { min: 0.2, max: 1, step: 0.05 },
   forceMultiplier: { min: 0.25, max: 2, step: 0.05 },

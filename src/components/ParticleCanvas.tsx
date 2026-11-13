@@ -15,6 +15,7 @@ interface ParticleCanvasProps {
   onError: (message: string) => void;
 }
 
+// Este puente monta p5 fuera del render de React y entrega sus controles al padre.
 export default function ParticleCanvas({
   interactionRef,
   settingsRef,
@@ -22,6 +23,8 @@ export default function ParticleCanvas({
   onError,
 }: ParticleCanvasProps) {
   const mountRef = useRef<HTMLDivElement>(null);
+  // La instancia del motor conserva un callback estable, pero llama siempre a
+  // las versiones más recientes de las funciones recibidas como props.
   const callbacksRef = useRef({ onReady, onError });
   callbacksRef.current = { onReady, onError };
 
@@ -31,6 +34,8 @@ export default function ParticleCanvas({
     let disposed = false;
     let disposeEngine: (() => void) | null = null;
 
+    // La carga es asíncrona: si el componente se desmonta antes de terminar,
+    // hay que liberar igualmente el motor que acaba de crearse.
     void createParticleEngine({
       container,
       interactionRef,

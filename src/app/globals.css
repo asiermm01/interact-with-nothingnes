@@ -1,5 +1,6 @@
 @import url("https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap");
 
+/* El lienzo ocupa el fondo; la interfaz se superpone sin participar en la simulación. */
 :root {
   color-scheme: dark;
   --void: #07070b;

@@ -1,5 +1,7 @@
 import type { Point2D } from "./types";
 
+// Matriz afín 2D compatible con canvas: transforma píxeles del campo en
+// píxeles de pantalla mediante escala y giro alrededor del centro.
 export interface FieldTransform {
   a: number;
   b: number;
@@ -37,6 +39,8 @@ export const transformFieldPoint = (
   point.y = transform.b * x + transform.d * y + transform.f;
 };
 
+// La inversa lleva una posición de pantalla al campo para que manos, ratón y
+// nuevos trazos coincidan con el entorno aun con zoom o rotación.
 export const inverseTransformFieldPoint = (
   x: number,
   y: number,

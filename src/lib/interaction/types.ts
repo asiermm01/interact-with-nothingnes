@@ -1,3 +1,5 @@
+// Contratos compartidos entre cámara, reconocedor, interfaz y motor visual.
+// Las uniones restringen los identificadores posibles en tiempo de compilación.
 export type GestureName =
   | "IDLE"
   | "CURSOR"
@@ -52,6 +54,7 @@ export interface HandLandmark extends Point2D {
   score?: number;
 }
 
+/** Resultado de una mano del modelo, con x e y normalizadas entre 0 y 1. */
 export interface HandObservation {
   keypoints: HandLandmark[];
   confidence: number;
@@ -84,6 +87,7 @@ export interface TraceStyle {
   opacity: number;
 }
 
+/** Geometría persistente en coordenadas normalizadas del espacio del campo. */
 export interface PersistentStroke {
   id: string;
   handId: string;
@@ -142,6 +146,10 @@ export interface HandCursor {
   mode: "CURSOR" | "TRACE";
 }
 
+/**
+ * Instantánea publicada por el reconocedor y leída por la interfaz y p5.
+ * Las versiones indican cambios en los trazos o un borrado sin copiar toda su geometría.
+ */
 export interface InteractionFrame {
   hands: DetectedHand[];
   tracking: HandTrackSnapshot[];

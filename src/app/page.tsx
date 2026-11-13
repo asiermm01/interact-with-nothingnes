@@ -1,5 +1,7 @@
 "use client";
 
+// App Router usa este archivo como la ruta inicial. La experiencia necesita
+// un componente de cliente por sus efectos y su acceso a las API del navegador.
 import { useEffect } from "react";
 import Experience from "@/components/Experience";
 

@@ -24,6 +24,8 @@ import type {
   Point2D,
 } from "./types";
 
+// Convierte observaciones de manos en poses, acciones y un InteractionFrame.
+// Conserva memoria entre detecciones para estabilizar identidades y gestos.
 interface FingerDefinition {
   name: FingerName;
   tip: string;
@@ -61,6 +63,8 @@ interface PoseStability {
   stability: number;
 }
 
+// Referencia tomada al comenzar el gesto; evita acumular la misma variación
+// de escala en cada fotograma y permite continuar desde la vista actual.
 interface StretchReference {
   handIds: string;
   width: number;
@@ -166,6 +170,10 @@ export class GestureRecognizer {
   private stretchReference: StretchReference | null = null;
   private invalidStretchReported = false;
 
+  /**
+   * Procesa las observaciones de una inferencia con su instante, ajustes y
+   * tamaño de pantalla; devuelve el estado consumido por React y el motor.
+   */
   update(
     observations: HandObservation[],
     now: number,
@@ -205,6 +213,8 @@ export class GestureRecognizer {
       if (!visibleIds.has(id)) this.activeStrokes.delete(id);
     });
 
+    // CLEAR ALL tiene prioridad: requiere ambas manos, una duración mínima y
+    // soltar el gesto antes de poder activarlo de nuevo.
     const bothClearPoses =
       hands.length === 2 && hands.every((hand) => hand.isThumbOnly);
     if (bothClearPoses) {
@@ -247,6 +257,8 @@ export class GestureRecognizer {
       clearEvent.push({ id: this.nextEventId++, type: "clear-all", timestamp: now });
     }
 
+    // Después de CLEAR ALL, STRETCH ocupa ambas manos; las demás acciones
+    // se deciden individualmente según la pose estable de cada mano.
     const stretchActive =
       !clearActive &&
       hands.length === 2 &&
@@ -356,6 +368,10 @@ export class GestureRecognizer {
     }
   }
 
+  /**
+   * Conserva la identidad entre inferencias: usa la lateralidad disponible y,
+   * si falta, compara la posición predicha con las trayectorias recientes.
+   */
   private assignIdentities(
     observations: HandObservation[],
     now: number,
@@ -521,6 +537,8 @@ export class GestureRecognizer {
       const distanceFromTip = finger.name === "thumb"
         ? distance(tip, indexBase)
         : distance(tip, wrist);
+      // La histéresis usa umbrales distintos al extender y al recoger el dedo
+      // para evitar cambios rápidos cuando la medición oscila cerca del límite.
       const referencePoint = previous?.extendedFingers[finger.name] ?? false;
       const extensionRatio = referencePoint
         ? tuning.fingerReleaseRatio
@@ -576,6 +594,8 @@ export class GestureRecognizer {
             : isOpenPalm
               ? "OPEN PALM"
               : "IDLE";
+    // CURSOR y TRACE responden de inmediato; las demás poses esperan una
+    // duración configurable antes de sustituir la pose estable anterior.
     const poseStability =
       rawPose === "CURSOR" || rawPose === "TRACE"
         ? {
@@ -677,6 +697,10 @@ export class GestureRecognizer {
         };
   }
 
+  /**
+   * Convierte el cursor de pantalla a espacio del campo y añade puntos solo
+   * al dibujar, interpolando segmentos largos para conservar la continuidad.
+   */
   private updateStroke(
     hand: DetectedHand,
     tuning: InteractionTuning,
@@ -737,6 +761,10 @@ export class GestureRecognizer {
     this.strokeVersion += 1;
   }
 
+  /**
+   * Calcula escala y giro relativos al inicio de STRETCH y suaviza la vista.
+   * Al soltar solo se descarta la referencia: la transformación actual persiste.
+   */
   private updateFieldTransform(
     hands: DetectedHand[],
     delta: number,
@@ -779,6 +807,7 @@ export class GestureRecognizer {
         };
         return;
       }
+      // El delta angular envuelto permite cruzar ±π y acumular varias vueltas.
       const reference = this.stretchReference;
       reference.rotationDelta += wrapAngle(angle - reference.previousAngle);
       reference.previousAngle = angle;

@@ -27,6 +27,7 @@ import type {
   VisualMode,
 } from "@/lib/interaction/types";
 
+// p5 necesita DOM y WebGL: se carga solo en el navegador, no al prerenderizar.
 const ParticleCanvas = dynamic(() => import("./ParticleCanvas"), {
   ssr: false,
   loading: () => <div aria-hidden="true" className="canvas-loading" />,
@@ -89,6 +90,8 @@ export default function Experience() {
     loggedRenderRef.current = true;
   }
 
+  // Las refs permiten que detección y animación intercambien datos frecuentes
+  // sin forzar un render de React por cada imagen de cámara o fotograma.
   const interactionRef = useRef<InteractionFrame>({ ...initialInteraction });
   const settingsRef = useRef<UserSettings>({ ...DEFAULT_USER_SETTINGS });
   const engineRef = useRef<ParticleCanvasHandle | null>(null);
@@ -100,6 +103,7 @@ export default function Experience() {
   const gestureLegendTriggerRef = useRef<HTMLButtonElement>(null);
   const gestureLegendCloseRef = useRef<HTMLButtonElement>(null);
   const lastGestureRef = useRef<GestureName>("IDLE");
+  // El estado de React se reserva para los valores que sí cambian la interfaz.
   const [settings, setSettings] = useState(DEFAULT_USER_SETTINGS);
   const [trackingStatus, setTrackingStatus] = useState<TrackingStatus>("idle");
   const [statusMessage, setStatusMessage] = useState("");
@@ -140,6 +144,10 @@ export default function Experience() {
 
   settingsRef.current = settings;
 
+  /**
+   * Recibe observaciones normalizadas del tracker y publica el fotograma
+   * interpretado para p5; solo actualiza la interfaz cuando sus textos cambian.
+   */
   const updateHands = useCallback((observations: HandObservation[]) => {
     const frame = recognizerRef.current.update(
       observations,
@@ -261,6 +269,8 @@ export default function Experience() {
     setClearProgress(0);
   }, []);
 
+  // El genérico relaciona cada clave con su tipo de valor: no permite, por
+  // ejemplo, asignar un texto a un ajuste numérico.
   const changeSetting = <Key extends keyof UserSettings>(
     key: Key,
     value: UserSettings[Key],
@@ -421,6 +431,8 @@ export default function Experience() {
       });
     }, 0);
 
+    // El efecto puede desmontarse mientras se solicita permiso o carga el
+    // modelo; stop() libera la cámara y evita mantener el seguimiento activo.
     return () => {
       console.info("[WEBCAM] Startup effect cleanup");
       cancelled = true;

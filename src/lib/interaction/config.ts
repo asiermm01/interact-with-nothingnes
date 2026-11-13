@@ -1,5 +1,7 @@
 import type { InteractionTuning, UserSettings } from "./types";
 
+// Fuente común de umbrales, límites y valores iniciales para reconocimiento,
+// simulación y controles. Los rangos editables se declaran más abajo.
 export const INTERACTION_CONFIG = {
   detection: {
     maxHands: 2,
@@ -94,6 +96,7 @@ export const INTERACTION_TUNING_DEFAULTS: InteractionTuning = {
   stretchSensitivity: INTERACTION_CONFIG.stretch.sensitivity,
 };
 
+// Record exige que cada ajuste de InteractionTuning tenga un rango definido.
 export const INTERACTION_TUNING_RANGES: Record<keyof InteractionTuning, SettingRange> = {
   confidenceThreshold: { min: 0.2, max: 0.9, step: 0.05 },
   smoothing: { min: 0.1, max: 0.8, step: 0.05 },

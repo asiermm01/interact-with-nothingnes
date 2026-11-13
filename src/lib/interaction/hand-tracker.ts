@@ -5,6 +5,8 @@ import type {
 } from "./types";
 import { INTERACTION_CONFIG } from "./config";
 
+// Adapta la salida de ml5 a los contratos del proyecto; ni React ni p5
+// necesitan conocer los detalles de la cámara o del modelo.
 interface Ml5Keypoint {
   x: number;
   y: number;
@@ -66,6 +68,10 @@ const startupErrorMessages = new Map([
   ["HandPose is taking too long to load. Check your internet connection and try again.", "La detección de manos tarda demasiado en cargar. Comprueba la conexión a internet e inténtalo de nuevo."],
 ]);
 
+/**
+ * Controla la cámara y HandPose. Publica observaciones y estados mediante
+ * callbacks, y libera el flujo, los temporizadores y el modelo al detenerse.
+ */
 export class HandTracker implements HandTrackerHandle {
   private stream: MediaStream | null = null;
   private model: HandPoseModel | null = null;
@@ -90,6 +96,7 @@ export class HandTracker implements HandTrackerHandle {
     this.onStatus(status, message);
   }
 
+  // Los metadatos no garantizan por sí solos que haya imágenes disponibles.
   private async waitForVideoReady() {
     if (this.video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && this.video.videoWidth > 0) {
       return;
@@ -127,6 +134,8 @@ export class HandTracker implements HandTrackerHandle {
 
   }
 
+  // requestAnimationFrame espera al siguiente repintado del navegador y
+  // comprueba que el tiempo del vídeo avance antes de ejecutar el modelo.
   private async waitForVideoFrame() {
     const firstTime = this.video.currentTime;
     const startedAt = performance.now();
@@ -153,6 +162,8 @@ export class HandTracker implements HandTrackerHandle {
 
   }
 
+  // El watchdog hace visible un modelo que deja de responder en vez de dejar
+  // la interfaz esperando indefinidamente.
   private watchForDetections() {
     if (this.detectionWatchdog !== null) {
       window.clearTimeout(this.detectionWatchdog);
@@ -167,6 +178,7 @@ export class HandTracker implements HandTrackerHandle {
     }, timeout);
   }
 
+  /** Filtra puntos inválidos, normaliza píxeles a 0–1 y entrega las manos al reconocedor. */
   private processResults(results: Ml5HandResult[]) {
     if (!this.active) return;
     if (!Array.isArray(results)) {
@@ -221,6 +233,8 @@ export class HandTracker implements HandTrackerHandle {
     }
   }
 
+  // Cada promesa de inferencia termina antes de programar la siguiente; así
+  // no se acumulan llamadas concurrentes si el modelo tarda en responder.
   private async detectNextFrame(model: HandPoseModel) {
     if (!this.active) return;
     const startedAt = performance.now();
@@ -250,6 +264,7 @@ export class HandTracker implements HandTrackerHandle {
     }
   }
 
+  // Se reutiliza un canvas auxiliar para capturar la imagen actual del vídeo.
   private captureInferenceFrame() {
     const width = this.video.videoWidth;
     const height = this.video.videoHeight;
@@ -271,6 +286,8 @@ export class HandTracker implements HandTrackerHandle {
     return this.inferenceCanvas;
   }
 
+  // Promise.race limita la espera del modelo y el temporizador se limpia tanto
+  // si la carga termina como si falla.
   private async waitForModel(model: HandPoseModel) {
     let timeout: number | undefined;
     try {
@@ -288,6 +305,7 @@ export class HandTracker implements HandTrackerHandle {
     }
   }
 
+  /** Solicita permiso, espera al vídeo y al modelo, y arranca la inferencia local. */
   async start(): Promise<boolean> {
     if (this.active) return true;
     this.active = true;
@@ -314,6 +332,7 @@ export class HandTracker implements HandTrackerHandle {
         },
       });
 
+      // El usuario puede desconectar mientras la petición de permiso sigue pendiente.
       if (!this.active) {
         console.info("[WEBCAM] Tracker was stopped while camera permission was pending.");
         this.stop();
@@ -423,6 +442,7 @@ export class HandTracker implements HandTrackerHandle {
     }
   }
 
+  /** Detiene el seguimiento y libera cámara, escucha de eventos y temporizadores. */
   stop() {
     this.active = false;
     const model = this.model;

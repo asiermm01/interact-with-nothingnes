@@ -16,6 +16,8 @@ import {
   type FieldTransform,
 } from "../interaction/field-transform";
 
+// El shader de fondo se ejecuta en WebGL: calcula el color de los píxeles en
+// la GPU. La matriz inversa mantiene el fondo alineado con el campo transformado.
 const backgroundVertexShader = `
 precision highp float;
 attribute vec3 aPosition;
@@ -123,6 +125,8 @@ declare global {
   }
 }
 
+// Arrays tipados paralelos: cada índice representa una partícula. La capacidad
+// se reserva al inicializarlos y está limitada por el presupuesto configurado.
 interface ParticleBuffers {
   x: Float32Array;
   y: Float32Array;
@@ -159,6 +163,8 @@ interface TrailSegment {
   intensity: number;
 }
 
+// Búfer circular acotado: guarda segmentos en pantalla, no geometría de TRACE.
+// Los segmentos caducan por edad y, si se llena, se descarta el más antiguo.
 class TrailHistory {
   private readonly segments: (TrailSegment | undefined)[];
   private start = 0;
@@ -216,6 +222,7 @@ class TrailHistory {
 
     layer.clear();
     if (this.length === 0) return false;
+    // Agrupar por opacidad permite dibujar muchos segmentos con menos llamadas.
     const paths: (Path2D | undefined)[] = new Array(16);
     for (let index = 0; index < this.length; index += 1) {
       const segment = this.segments[(this.start + index) % this.capacity]!;
@@ -314,6 +321,7 @@ interface CachedStrokePaths {
   dots: Path2D;
 }
 
+// Reutiliza los Path2D de cada trazo y añade solo los vértices nuevos.
 const drawStroke = (
   context: CanvasRenderingContext2D,
   stroke: PersistentStroke,
@@ -378,6 +386,10 @@ const applyFieldTransform = (
   );
 };
 
+/**
+ * Carga p5 y GSAP en el navegador, crea el lienzo y devuelve una función de
+ * limpieza. Las refs aportan el estado más reciente sin reconstruir el motor.
+ */
 export async function createParticleEngine({
   container,
   interactionRef,
@@ -462,6 +474,8 @@ export async function createParticleEngine({
   };
   particles = makeParticles(particleCount, 1, 1);
 
+  // Al cambiar dimensiones se regeneran las partículas y las capas dependientes
+  // de píxeles; los trazos persistentes siguen en el estado del reconocedor.
   const resizeCanvases = (width: number, height: number) => {
     if (!instance || destroyed) return;
     instance.resizeCanvas(width, height, true);
@@ -489,6 +503,7 @@ export async function createParticleEngine({
   const sketch = (p: p5) => {
     instance = p;
 
+    // p5 llama setup una vez y draw en su bucle de animación del navegador.
     p.setup = () => {
       if (destroyed) return;
       const width = Math.max(container.clientWidth, window.innerWidth);
@@ -616,6 +631,8 @@ export async function createParticleEngine({
       });
     };
 
+    // Cada fotograma toma una instantánea de las refs, simula, transforma y
+    // compone las capas; delta acotado evita saltos grandes tras una pausa.
     p.draw = () => {
       if (paused || !particles || !particleTrailLayer || !traceTrailLayer || destroyed) return;
       const frameStartedAt = process.env.NODE_ENV !== "production" ? performance.now() : 0;
@@ -685,6 +702,8 @@ export async function createParticleEngine({
         settingsRef.current.interaction.gravityStrength *
         (intensity / 100) *
         settingsRef.current.interaction.forceMultiplier / fieldScale;
+      // Las fuerzas actúan en el espacio del campo, por eso los puntos de
+      // pantalla de manos y ratón pasan primero por la matriz inversa.
       const forceTargets = activeHands.map((hand) => {
         const target = hand.interaction === "collapse" ? hand.pinchPoint : hand.center;
         const point: Point2D = { x: 0, y: 0 };
@@ -716,6 +735,8 @@ export async function createParticleEngine({
       const shimmerTime = now * 0.7;
       const simulationStartedAt = process.env.NODE_ENV !== "production" ? performance.now() : 0;
 
+      // Las partículas mantienen posición y velocidad propias; GRAVITY y
+      // COLLAPSE aplican atracción con caída gradual según la distancia.
       for (let index = 0; index < particleCount; index += 1) {
         let x = particles.x[index];
         let y = particles.y[index];
@@ -780,6 +801,8 @@ export async function createParticleEngine({
         particles.vx[index] = vx;
         particles.vy[index] = vy;
 
+        // Las estelas muestrean posiciones ya transformadas, con distancia y
+        // tiempo mínimos. No se incorporan a la simulación ni a los trazos.
         if (index % particleTrailStride !== 0) continue;
         transformFieldPoint(x, y, fieldTransform, transformedPoint);
         const trailX = particles.trailX[index];
@@ -825,7 +848,7 @@ export async function createParticleEngine({
       particleHistory.render(
         trailLayer, now, particleTrailAlpha, INTERACTION_CONFIG.trails.particleThickness,
       );
-      // p5 POINTS uses its point shader rather than the custom fill shader.
+      // p5 POINTS usa su propio shader; dibujamos los puntos en la capa 2D.
       const particleContext = trailLayer.drawingContext as CanvasRenderingContext2D;
       particleContext.save();
       const particleScale = Math.hypot(fieldTransform.a, fieldTransform.b);
@@ -942,6 +965,8 @@ export async function createParticleEngine({
           lastStrokeVersion = state.strokeVersion;
         }
 
+        // La capa persistente solo se redibuja si cambia la geometría o la
+        // transformación; las estelas se calculan y caducan por separado.
         if (
           lastStrokeVersion !== lastDisplayedStrokeVersion ||
           state.universeScale !== lastDisplayedScale ||
@@ -973,6 +998,7 @@ export async function createParticleEngine({
         ) {
           if (state.strokeVersion !== lastTraceTrailStrokeVersion) {
             const pointCount = state.strokes.reduce((total, stroke) => total + stroke.points.length, 0);
+            // Repartir el muestreo entre trazos limita el trabajo en dibujos largos.
             const nextStride = Math.max(
               INTERACTION_CONFIG.trails.traceSampleStride,
               Math.ceil(pointCount / INTERACTION_CONFIG.trails.maximumTrackedTracePoints),
@@ -1164,6 +1190,8 @@ export async function createParticleEngine({
   });
   resizeObserver.observe(container);
 
+  // React llama a esta limpieza al desmontar: desconecta observadores y libera
+  // el lienzo, las capas y los diagnósticos de desarrollo.
   const cleanup = () => {
     destroyed = true;
     resizeObserver.disconnect();

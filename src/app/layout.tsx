@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import "./globals.css";
 
+// Este layout de Next.js se prerenderiza; la interacción se inicia en los
+// componentes de cliente que contiene. También fija el idioma y los metadatos.
 export const metadata: Metadata = {
   title: "ONE WITH NOTHINGNESS — Estudio de campo 001",
   description:

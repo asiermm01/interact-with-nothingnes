@@ -1,3 +1,5 @@
+// Declaración ambiental: describe a TypeScript la API de ml5 que usamos;
+// no implementa el modelo ni añade código ejecutable al navegador.
 declare module "ml5" {
   interface HandPoseKeypoint {
     x: number;

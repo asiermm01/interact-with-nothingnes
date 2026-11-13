@@ -1,6 +1,8 @@
 import { cp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
+// Se ejecuta con Node después de next build: prepara la copia estática de la
+// raíz para Live Server, que por sí solo no compila la aplicación.
 const root = process.cwd();
 const output = join(root, "out");
 const rootAssets = join(root, "_next");
@@ -66,6 +68,8 @@ function formatHtml(html) {
   let offset = 0;
   let rawTag = "";
 
+  // Los comentarios separan bloques sin introducir nodos de texto adicionales
+  // que puedan alterar la hidratación de React.
   const separator = () => {
     result += `<!--\n${"  ".repeat(elements.length)}-->`;
   };

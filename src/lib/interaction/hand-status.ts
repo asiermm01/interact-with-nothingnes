@@ -1,5 +1,6 @@
 import type { DetectedHand, HandInteraction } from "./types";
 
+// Traduce la interacción ya priorizada por el reconocedor; no clasifica poses.
 type HandStatus = "NO DETECTADA" | "SIN IDENTIFICAR" | "EN REPOSO" | "CURSOR" | "TRACE" |
   "GRAVITY" | "STRETCH" | "COLLAPSE" | "CLEAR ALL";
 

@@ -8,6 +8,7 @@ const palettes: Record<Exclude<VisualMode, "monochrome">, readonly Color[]> = {
 };
 const blendSteps = 64;
 
+// Precalcular mezclas evita crear cadenas RGB nuevas por partícula y fotograma.
 const makeColorTable = (palette: readonly Color[]) =>
   palette.map((from) => palette.map((to) =>
     Array.from({ length: blendSteps + 1 }, (_, step) => {
@@ -44,6 +45,7 @@ export const createParticleColor = (now: number, random = Math.random): Particle
   };
 };
 
+/** Mantiene una transición independiente por partícula y devuelve su color actual. */
 export const particleColorAt = (
   state: ParticleColorState,
   now: number,

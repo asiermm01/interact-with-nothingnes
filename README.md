@@ -3,6 +3,9 @@
 Instalación interactiva de partículas. La experiencia visual comienza directamente;
 el seguimiento con cámara es opcional y también se puede interactuar con el ratón.
 
+Para explorar la arquitectura y el recorrido de los datos, consulta la
+[guía del proyecto](./PROJECT_GUIDE.md).
+
 ## Tecnologías y bibliotecas
 
 - **Next.js 16 (App Router)**: estructura de la aplicación y generación estática

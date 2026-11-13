@@ -516,7 +516,7 @@ export default function Experience() {
             </span>
             <div>
               <p>ONE WITH NOTHINGNESS</p>
-              <span>ESTUDIO DE CAMPO &nbsp; / &nbsp; 001</span>
+              <span>PROYECTO ARTÍSTICO &nbsp; / &nbsp; 001</span>
             </div>
           </header>
 

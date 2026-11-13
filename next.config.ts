@@ -4,7 +4,7 @@ const nextConfig: NextConfig = {
   output: "export",
 
   // Nombre exacto del repositorio de GitHub
-  basePath: "/onewithnothingness",
+  basePath: "/one-with-nothingness",
 
   trailingSlash: true,
 

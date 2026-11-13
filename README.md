@@ -29,7 +29,13 @@ npm run dev
 Open [http://localhost:3000](http://localhost:3000) for development.
 In the browser console, `window.__particleDiagnostics()` reports completed
 frames, coordinate validity, trail counts and expiry, and WebGL/shader status.
-This diagnostic is available only in development.
+It also reports smoothed FPS, frame interval, CPU draw/simulation/TRACE time,
+visible and budgeted particle counts, scale, and rendering quality. CPU timings
+do not include all asynchronous GPU work. This diagnostic is available only in
+development.
+In development, enabling **DEBUG** also displays these lightweight performance
+measurements, refreshed once per second. Quality reflects the existing
+pixel-density setting; it does not adapt automatically.
 
 ## Open with VS Code Live Server
 
@@ -64,7 +70,13 @@ in production.
 - **GRAVITY:** Close one hand into a fist to continuously attract nearby particles
   toward that hand.
 - **STRETCH:** Show two open palms; their separation scales the particle field,
-  while their relative angle rotates it.
+  while their relative angle rotates it. Each gesture starts from the current
+  view and leaves the resulting scale and rotation in place. Zoom is limited to
+  0.3×–4×; rotation can continue through multiple turns. The reset control
+  intentionally returns the view to its initial transformation.
+- The field starts with 1,050 particles and has a configurable maximum budget
+  of 1,800. Zoom changes the view without creating new particles. TRACE trail
+  samples are distributed across long drawings to keep their history bounded.
 - **COLLAPSE:** Make an OK sign: pinch thumb and index while extending the
   middle, ring, and pinky fingers to create a localized attraction.
 - **CLEAR ALL:** Extend only the thumb on both hands and hold for the configured
@@ -93,4 +105,5 @@ instead of searching indefinitely.
 ```bash
 npm run typecheck
 npm run build
+node --test scripts/interaction.test.cjs
 ```

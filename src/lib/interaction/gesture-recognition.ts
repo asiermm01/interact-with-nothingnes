@@ -1,4 +1,9 @@
 import { INTERACTION_CONFIG } from "./config";
+import {
+  createFieldTransform,
+  inverseTransformFieldPoint,
+  transformFieldPoint,
+} from "./field-transform";
 import type {
   DetectedHand,
   FingerName,
@@ -54,6 +59,17 @@ interface PoseStability {
   candidatePose: HandPoseName;
   candidateSince: number;
   stability: number;
+}
+
+interface StretchReference {
+  handIds: string;
+  width: number;
+  height: number;
+  separation: number;
+  previousAngle: number;
+  rotationDelta: number;
+  scale: number;
+  rotation: number;
 }
 
 const fingerDefinitions: FingerDefinition[] = [
@@ -147,12 +163,19 @@ export class GestureRecognizer {
   private lastFrame = 0;
   private universeScale = 1;
   private universeRotation = 0;
+  private stretchReference: StretchReference | null = null;
+  private invalidStretchReported = false;
 
   update(
     observations: HandObservation[],
     now: number,
     tuning: InteractionTuning,
+    viewport: { width: number; height: number },
   ): InteractionFrame {
+    if (!Number.isFinite(viewport.width) || !Number.isFinite(viewport.height) ||
+        viewport.width <= 0 || viewport.height <= 0) {
+      throw new Error("Gesture recognition requires finite, positive viewport dimensions.");
+    }
     const delta = this.lastFrame
       ? Math.min(
           Math.max((now - this.lastFrame) / 1000, 0.001),
@@ -241,16 +264,16 @@ export class GestureRecognizer {
       this.activeStrokes.clear();
     } else {
       for (const hand of hands) {
-        if (hand.interaction === "trace") this.updateStroke(hand, tuning);
+        if (hand.interaction === "trace") this.updateStroke(hand, tuning, viewport);
         else this.activeStrokes.delete(hand.id);
       }
     }
 
     this.recordEvents(clearEvent, now);
     if (clearActive) {
-      this.updateFieldTransform([], delta, tuning.stretchSensitivity);
+      this.updateFieldTransform([], delta, tuning.stretchSensitivity, viewport);
     } else {
-      this.updateFieldTransform(hands, delta, tuning.stretchSensitivity, stretchActive);
+      this.updateFieldTransform(hands, delta, tuning.stretchSensitivity, viewport, stretchActive);
     }
 
     const cursors: HandCursor[] = clearActive
@@ -311,6 +334,16 @@ export class GestureRecognizer {
     this.clearVersion += 1;
     this.recordEvents([{ id: this.nextEventId++, type: "clear-all", timestamp: now }], now);
     return this.createFrame(now);
+  }
+
+  releaseStretch() {
+    this.stretchReference = null;
+  }
+
+  resetTransform() {
+    this.releaseStretch();
+    this.universeScale = 1;
+    this.universeRotation = 0;
   }
 
   private recordEvents(events: InteractionEvent[], now: number) {
@@ -644,13 +677,29 @@ export class GestureRecognizer {
         };
   }
 
-  private updateStroke(hand: DetectedHand, tuning: InteractionTuning) {
+  private updateStroke(
+    hand: DetectedHand,
+    tuning: InteractionTuning,
+    viewport: { width: number; height: number },
+  ) {
+    const transform = createFieldTransform(
+      viewport.width, viewport.height, this.universeScale, this.universeRotation,
+    );
+    const worldPoint: Point2D = { x: 0, y: 0 };
+    inverseTransformFieldPoint(
+      hand.cursorPoint.x * viewport.width,
+      hand.cursorPoint.y * viewport.height,
+      transform,
+      worldPoint,
+    );
+    worldPoint.x /= viewport.width;
+    worldPoint.y /= viewport.height;
     let stroke = this.activeStrokes.get(hand.id);
     if (!stroke) {
       stroke = {
         id: `stroke-${this.nextStrokeId++}`,
         handId: hand.id,
-        points: [hand.cursorPoint],
+        points: [worldPoint],
         style: {
           color: INTERACTION_CONFIG.drawing.color,
           thickness: tuning.traceThickness,
@@ -665,7 +714,14 @@ export class GestureRecognizer {
     }
 
     const previous = stroke.points[stroke.points.length - 1];
-    const segmentLength = distance(previous, hand.cursorPoint);
+    const previousScreen: Point2D = { x: 0, y: 0 };
+    transformFieldPoint(
+      previous.x * viewport.width, previous.y * viewport.height, transform, previousScreen,
+    );
+    const segmentLength = distance(
+      { x: previousScreen.x / viewport.width, y: previousScreen.y / viewport.height },
+      hand.cursorPoint,
+    );
     if (segmentLength < tuning.traceSpacing) return;
     const steps = Math.min(
       Math.ceil(segmentLength / tuning.traceSpacing),
@@ -674,8 +730,8 @@ export class GestureRecognizer {
     for (let step = 1; step <= steps; step += 1) {
       const amount = step / steps;
       stroke.points.push({
-        x: lerp(previous.x, hand.cursorPoint.x, amount),
-        y: lerp(previous.y, hand.cursorPoint.y, amount),
+        x: lerp(previous.x, worldPoint.x, amount),
+        y: lerp(previous.y, worldPoint.y, amount),
       });
     }
     this.strokeVersion += 1;
@@ -685,31 +741,65 @@ export class GestureRecognizer {
     hands: DetectedHand[],
     delta: number,
     sensitivity: number,
+    viewport: { width: number; height: number },
     stretchActive = false,
   ) {
     if (stretchActive && hands.length === 2) {
       const orderedHands = [...hands].sort((a, b) => a.id.localeCompare(b.id));
       const first = orderedHands[0];
       const second = orderedHands[1];
-      const separation = distance(first.center, second.center);
+      const dx = (second.center.x - first.center.x) * viewport.width;
+      const dy = (second.center.y - first.center.y) * viewport.height;
+      const separation = Math.hypot(dx, dy) / Math.min(viewport.width, viewport.height);
+      const angle = Math.atan2(dy, dx);
+      if (!Number.isFinite(separation) || !Number.isFinite(angle) || !Number.isFinite(sensitivity)) {
+        if (!this.invalidStretchReported) {
+          console.error("[STRETCH] Invalid hand positions or sensitivity; transformation unchanged.");
+          this.invalidStretchReported = true;
+        }
+        this.releaseStretch();
+        return;
+      }
+      this.invalidStretchReported = false;
+      if (separation < INTERACTION_CONFIG.stretch.minimumGestureSeparation) {
+        this.releaseStretch();
+        return;
+      }
+      const handIds = `${first.id}:${second.id}`;
+      if (
+        !this.stretchReference ||
+        this.stretchReference.handIds !== handIds ||
+        this.stretchReference.width !== viewport.width ||
+        this.stretchReference.height !== viewport.height
+      ) {
+        this.stretchReference = {
+          handIds, width: viewport.width, height: viewport.height,
+          separation, previousAngle: angle, rotationDelta: 0,
+          scale: this.universeScale, rotation: this.universeRotation,
+        };
+        return;
+      }
+      const reference = this.stretchReference;
+      reference.rotationDelta += wrapAngle(angle - reference.previousAngle);
+      reference.previousAngle = angle;
       const targetScale = Math.min(
         INTERACTION_CONFIG.stretch.maximumScale,
         Math.max(
           INTERACTION_CONFIG.stretch.minimumScale,
-          1 + (separation - INTERACTION_CONFIG.stretch.baselineSeparation) * sensitivity,
+          reference.scale * Math.pow(separation / reference.separation, sensitivity),
         ),
       );
       this.universeScale = lerp(this.universeScale, targetScale, 1 - Math.exp(-delta * 5));
-      const targetRotation = Math.atan2(
-        second.center.y - first.center.y,
-        second.center.x - first.center.x,
+      if (Math.abs(this.universeScale - targetScale) < 0.00001) {
+        this.universeScale = targetScale;
+      }
+      const targetRotation = reference.rotation + reference.rotationDelta;
+      this.universeRotation = lerp(
+        this.universeRotation, targetRotation, 1 - Math.exp(-delta * 4),
       );
-      this.universeRotation +=
-        wrapAngle(targetRotation - this.universeRotation) * (1 - Math.exp(-delta * 4));
       return;
     }
-    this.universeScale = lerp(this.universeScale, 1, 1 - Math.exp(-delta * 1.8));
-    this.universeRotation += wrapAngle(-this.universeRotation) * (1 - Math.exp(-delta * 1.8));
+    this.releaseStretch();
   }
 
   private getTrackingSnapshots(hands: DetectedHand[], now: number): HandTrackSnapshot[] {

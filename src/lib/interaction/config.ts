@@ -40,6 +40,7 @@ export const INTERACTION_CONFIG = {
     particleThickness: 0.75,
     traceSampleDistance: 1.5,
     traceSampleStride: 3,
+    maximumTrackedTracePoints: 128,
     traceSampleIntervalSeconds: 0.08,
     traceOpacity: 20,
     traceThickness: 0.65,
@@ -50,13 +51,23 @@ export const INTERACTION_CONFIG = {
     collapseMultiplier: 3.2,
     maximumSpeed: 80,
   },
+  particles: {
+    initialCount: 1050,
+    minimumCount: 300,
+    maximumCount: 1800,
+  },
   stretch: {
-    baselineSeparation: 0.4,
     sensitivity: 1.8,
-    minimumScale: 0.68,
-    maximumScale: 1.55,
+    minimumScale: 0.3,
+    maximumScale: 4,
+    minimumGestureSeparation: 0.04,
   },
 } as const;
+
+export const particleCountForDensity = (density: number) => {
+  if (!Number.isFinite(density)) throw new Error("Particle density must be finite.");
+  return Math.min(INTERACTION_CONFIG.particles.maximumCount, Math.max(0, Math.round(density)));
+};
 
 export interface SettingRange {
   min: number;
@@ -103,7 +114,7 @@ export const INTERACTION_TUNING_RANGES: Record<keyof InteractionTuning, SettingR
 };
 
 export const DEFAULT_USER_SETTINGS: UserSettings = {
-  density: 1050,
+  density: INTERACTION_CONFIG.particles.initialCount,
   intensity: 54,
   persistence: INTERACTION_CONFIG.trails.defaultIntensity,
   mode: "nebula",

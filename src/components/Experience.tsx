@@ -10,8 +10,10 @@ import {
 } from "react";
 import { GestureRecognizer } from "@/lib/interaction/gesture-recognition";
 import { HandTracker } from "@/lib/interaction/hand-tracker";
+import type { ParticlePerformanceSnapshot } from "@/lib/rendering/particle-engine";
 import {
   DEFAULT_USER_SETTINGS,
+  INTERACTION_CONFIG,
   INTERACTION_TUNING_RANGES,
 } from "@/lib/interaction/config";
 import type {
@@ -139,6 +141,7 @@ export default function Experience() {
   const [handSummary, setHandSummary] = useState("NO HANDS DETECTED");
   const [clearProgress, setClearProgress] = useState(0);
   const [debugInteraction, setDebugInteraction] = useState<InteractionFrame | null>(null);
+  const [renderPerformance, setRenderPerformance] = useState<ParticlePerformanceSnapshot | null>(null);
   debugEnabledRef.current = debugEnabled;
   const handSummaryRef = useRef("");
   const lastClearVersionRef = useRef(0);
@@ -146,6 +149,7 @@ export default function Experience() {
   const clearProgressRef = useRef(0);
 
   const resetTrackingFrame = () => {
+    recognizerRef.current.releaseStretch();
     const current = interactionRef.current;
     interactionRef.current = {
       ...initialInteraction,
@@ -165,11 +169,20 @@ export default function Experience() {
 
   settingsRef.current = settings;
 
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production" || !debugEnabled) return;
+    const update = () => setRenderPerformance(window.__particlePerformance?.() ?? null);
+    update();
+    const timer = window.setInterval(update, 1000);
+    return () => window.clearInterval(timer);
+  }, [debugEnabled]);
+
   const updateHands = useCallback((observations: HandObservation[]) => {
     const frame = recognizerRef.current.update(
       observations,
       performance.now(),
       settingsRef.current.interaction,
+      { width: window.innerWidth, height: window.innerHeight },
     );
     frame.mouse = interactionRef.current.mouse;
     frame.mouseActive = interactionRef.current.mouseActive;
@@ -597,6 +610,24 @@ export default function Experience() {
         {debugEnabled && (
           <div className="tracking-diagnostics" aria-live="polite">
             <p>TRACKING DIAGNOSTICS</p>
+            {process.env.NODE_ENV !== "production" && renderPerformance && (
+              <>
+                <span>
+                  Render: {renderPerformance.fps?.toFixed(1) ?? "—"} FPS ·{" "}
+                  {renderPerformance.frameIntervalMs.toFixed(1)} ms/frame ·{" "}
+                  {renderPerformance.drawTimeMs.toFixed(1)} ms CPU draw
+                </span>
+                <span>
+                  Particles: {renderPerformance.count}/{renderPerformance.maximum} ·{" "}
+                  {renderPerformance.visible} visible · scale {renderPerformance.scale.toFixed(2)}× ·{" "}
+                  {renderPerformance.quality} quality
+                </span>
+                <span>
+                  Simulation: {renderPerformance.simulationTimeMs.toFixed(1)} ms ·{" "}
+                  TRACE: {renderPerformance.traceTimeMs.toFixed(1)} ms
+                </span>
+              </>
+            )}
             <span>Camera permission: {diagnostics.cameraPermission}</span>
             <span>
               Video: {diagnostics.videoReady ? "ready" : "waiting"} ·{" "}
@@ -839,8 +870,8 @@ export default function Experience() {
             <label className="slider-control">
               <span>PARTICLE DENSITY <output>{settings.density}</output></span>
               <input
-                max="1800"
-                min="300"
+                max={INTERACTION_CONFIG.particles.maximumCount}
+                min={INTERACTION_CONFIG.particles.minimumCount}
                 onChange={(event) => changeSetting("density", Number(event.target.value))}
                 step="50"
                 type="range"
@@ -946,6 +977,12 @@ export default function Experience() {
               aria-label="Reset universe"
               onClick={() => {
                 engineRef.current?.reset();
+                recognizerRef.current.resetTransform();
+                interactionRef.current = {
+                  ...interactionRef.current,
+                  universeScale: 1,
+                  universeRotation: 0,
+                };
                 clearTraceDrawings();
                 setHint("The field and drawings return to their first state.");
               }}

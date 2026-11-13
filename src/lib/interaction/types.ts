@@ -167,7 +167,6 @@ export interface InteractionFrame {
   mousePressed: boolean;
   gesture: GestureName;
   cursors: HandCursor[];
-  tracePoints: Point2D[];
   strokes: PersistentStroke[];
   strokeVersion: number;
   clearVersion: number;

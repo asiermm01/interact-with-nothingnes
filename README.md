@@ -27,6 +27,9 @@ npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) for development.
+In the browser console, `window.__particleDiagnostics()` reports completed
+frames, coordinate validity, trail counts and expiry, and WebGL/shader status.
+This diagnostic is available only in development.
 
 ## Open with VS Code Live Server
 
@@ -39,7 +42,9 @@ npm run build
 
 The build creates a formatted `index.html` and its `_next` assets directly in
 the project root. Open the project folder in VS Code and select **Go Live**;
-the root `index.html` is served automatically.
+the root `index.html` is served automatically. Re-run `npm run build` after
+source changes to refresh these root files; building only the Next.js export
+leaves the Live Server site unchanged.
 Webcam access requires a secure context: localhost during development or HTTPS
 in production.
 
@@ -52,7 +57,10 @@ in production.
 - **CURSOR:** Extend exactly one finger to position a cursor without affecting
   particles or drawings.
 - **TRACE:** Extend exactly two fingers to draw smoothed, persistent strokes.
-  Strokes remain until cleared and are independent of transient particle trails.
+  Strokes remain until cleared, follow the particle field during **STRETCH**, and
+  are unaffected by **GRAVITY** and **COLLAPSE**. Particle and TRACE movement
+  leave subtle, separate trails that fade away after approximately three seconds;
+  gesture markers and cursors are not recorded.
 - **GRAVITY:** Close one hand into a fist to continuously attract nearby particles
   toward that hand.
 - **STRETCH:** Show two open palms; their separation scales the particle field,

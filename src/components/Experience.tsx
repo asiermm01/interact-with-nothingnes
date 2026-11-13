@@ -39,7 +39,6 @@ const initialInteraction: InteractionFrame = {
   mousePressed: false,
   gesture: "IDLE",
   cursors: [],
-  tracePoints: [],
   strokes: [],
   strokeVersion: 0,
   clearVersion: 0,
@@ -175,8 +174,6 @@ export default function Experience() {
     frame.mouse = interactionRef.current.mouse;
     frame.mouseActive = interactionRef.current.mouseActive;
     frame.mousePressed = interactionRef.current.mousePressed;
-    frame.tracePoints =
-      frame.hands.length === 0 ? interactionRef.current.tracePoints : [];
     interactionRef.current = frame;
     if (frame.gesture !== lastGestureRef.current && frame.gesture !== "IDLE") {
       setHint(gestureLabels[frame.gesture]);
@@ -394,19 +391,12 @@ export default function Experience() {
     };
     const current = interactionRef.current;
     if (current.hands.length > 0) return;
-    const tracePoints =
-      event.buttons > 0
-        ? [...current.tracePoints, point].slice(-28)
-        : current.tracePoints.length
-          ? current.tracePoints.slice(1)
-          : current.tracePoints;
     interactionRef.current = {
       ...current,
       mouse: point,
       mouseActive: true,
       mousePressed: event.buttons > 0,
       gesture: event.buttons > 0 ? "TRACE" : "IDLE",
-      tracePoints,
     };
     const nextGesture = event.buttons > 0 ? "TRACE" : "IDLE";
     if (nextGesture !== lastGestureRef.current) {
@@ -421,7 +411,6 @@ export default function Experience() {
       mouseActive: false,
       mousePressed: false,
       gesture: interactionRef.current.hands.length ? interactionRef.current.gesture : "IDLE",
-      tracePoints: interactionRef.current.hands.length ? interactionRef.current.tracePoints : [],
     };
     if (!interactionRef.current.hands.length) {
       lastGestureRef.current = "IDLE";
@@ -871,7 +860,7 @@ export default function Experience() {
             </label>
 
             <label className="slider-control">
-              <span>TRAIL PERSISTENCE <output>{settings.persistence}%</output></span>
+              <span>TRAIL INTENSITY <output>{settings.persistence}%</output></span>
               <input
                 max="96"
                 min="20"

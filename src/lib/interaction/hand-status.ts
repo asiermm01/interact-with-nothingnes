@@ -1,10 +1,10 @@
 import type { DetectedHand, HandInteraction } from "./types";
 
-type HandStatus = "NOT DETECTED" | "NOT IDENTIFIED" | "IDLE" | "CURSOR" | "TRACE" |
+type HandStatus = "NO DETECTADA" | "SIN IDENTIFICAR" | "EN REPOSO" | "CURSOR" | "TRACE" |
   "GRAVITY" | "STRETCH" | "COLLAPSE" | "CLEAR ALL";
 
 const interactionLabels: Record<HandInteraction, HandStatus> = {
-  none: "IDLE",
+  none: "EN REPOSO",
   cursor: "CURSOR",
   trace: "TRACE",
   gravity: "GRAVITY",
@@ -15,7 +15,7 @@ const interactionLabels: Record<HandInteraction, HandStatus> = {
 
 export const getHandStatuses = (hands: Pick<DetectedHand, "handedness" | "interaction">[]) => {
   const unidentified = hands.some((hand) => hand.handedness === "Unknown");
-  const fallback: HandStatus = unidentified ? "NOT IDENTIFIED" : "NOT DETECTED";
+  const fallback: HandStatus = unidentified ? "SIN IDENTIFICAR" : "NO DETECTADA";
   const left = hands.find((hand) => hand.handedness === "Left");
   const right = hands.find((hand) => hand.handedness === "Right");
   return {

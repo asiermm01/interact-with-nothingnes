@@ -57,6 +57,14 @@ const SEARCH_HINT_DELAY_MS = 7_000;
 const VIDEO_READY_TIMEOUT_MS = 10_000;
 const VIDEO_FRAME_TIMEOUT_MS = 5_000;
 const TARGET_INFERENCE_INTERVAL_MS = INTERACTION_CONFIG.detection.inferenceIntervalMs;
+const startupErrorMessages = new Map([
+  ["The camera stream could not provide video frames.", "La cámara no ha podido enviar imágenes."],
+  ["The camera did not become ready. Check that it is not being used by another app.", "La cámara no está lista. Comprueba que no la esté usando otra aplicación."],
+  ["The camera video is ready but its frames are not advancing.", "La cámara está lista, pero la imagen no avanza."],
+  ["The camera is active but has no usable video dimensions.", "La cámara está activa, pero no envía imágenes válidas."],
+  ["The ml5 module did not expose the HandPose and TensorFlow APIs.", "No se pudo cargar la detección de manos."],
+  ["HandPose is taking too long to load. Check your internet connection and try again.", "La detección de manos tarda demasiado en cargar. Comprueba la conexión a internet e inténtalo de nuevo."],
+]);
 
 export class HandTracker implements HandTrackerHandle {
   private stream: MediaStream | null = null;
@@ -154,7 +162,7 @@ export class HandTracker implements HandTrackerHandle {
       if (!this.active) return;
       console.error("HandPose did not return inference results before the watchdog expired.");
       this.stop();
-      const message = "HandPose stopped responding. Check the camera and internet connection, then try again.";
+      const message = "La detección ha dejado de responder. Comprueba la cámara y la conexión a internet e inténtalo de nuevo.";
       this.setStatus("error", message);
     }, timeout);
   }
@@ -162,7 +170,7 @@ export class HandTracker implements HandTrackerHandle {
   private processResults(results: Ml5HandResult[]) {
     if (!this.active) return;
     if (!Array.isArray(results)) {
-      const message = "HandPose returned an invalid detection result.";
+      const message = "La detección ha devuelto un resultado no válido.";
       console.error(message, results);
       this.stop();
       this.setStatus("error", message);
@@ -174,7 +182,7 @@ export class HandTracker implements HandTrackerHandle {
     const width = this.video.videoWidth;
     const height = this.video.videoHeight;
     if (width <= 0 || height <= 0) {
-      const message = "The camera stopped providing valid video dimensions.";
+      const message = "La cámara ha dejado de enviar imágenes válidas.";
       this.stop();
       this.setStatus("error", message);
       return;
@@ -225,8 +233,7 @@ export class HandTracker implements HandTrackerHandle {
       this.processResults(results);
     } catch (error) {
       if (!this.active) return;
-      const message =
-        error instanceof Error ? `HandPose inference failed: ${error.message}` : "HandPose inference failed.";
+      const message = "No se pudieron detectar las manos. Comprueba la cámara e inténtalo de nuevo.";
       console.error("[HANDPOSE DETECTION] Inference failed:", error);
       this.stop();
       this.setStatus("error", message);
@@ -290,7 +297,7 @@ export class HandTracker implements HandTrackerHandle {
     try {
       if (!navigator.mediaDevices?.getUserMedia) {
         this.active = false;
-        const message = "This browser does not support webcam access.";
+        const message = "Este navegador no permite acceder a la cámara.";
         console.error("[WEBCAM] getUserMedia is unavailable in this browser.");
         this.setStatus("unavailable", message);
         return false;
@@ -322,7 +329,7 @@ export class HandTracker implements HandTrackerHandle {
       });
       this.streamEndedHandler = () => {
         if (!this.active) return;
-        const message = "The camera stream ended. Reconnect the camera and try again.";
+        const message = "La cámara se ha desconectado. Vuelve a conectarla e inténtalo de nuevo.";
         console.error(message);
         this.stop();
         this.setStatus("error", message);
@@ -391,21 +398,22 @@ export class HandTracker implements HandTrackerHandle {
       this.stop();
       console.error("[WEBCAM] Hand tracking startup failed:", error);
       if (error instanceof DOMException && error.name === "NotAllowedError") {
-        this.setStatus("denied", "Camera permission was denied. Mouse interaction remains available.");
+        this.setStatus("denied", "Se ha denegado el acceso a la cámara. Puedes seguir usando el ratón.");
         return false;
       }
       if (error instanceof DOMException && error.name === "NotFoundError") {
-        this.setStatus("unavailable", "No camera was found. Mouse interaction remains available.");
+        this.setStatus("unavailable", "No se ha encontrado ninguna cámara. Puedes seguir usando el ratón.");
         return false;
       }
       if (error instanceof DOMException && error.name === "NotReadableError") {
         const message =
-          "The camera is already in use or unavailable. Close other apps or tabs using it, then enable hands again.";
+          "La cámara no está disponible o ya está en uso. Cierra las aplicaciones o pestañas que la usen y vuelve a activar las manos.";
         this.setStatus("error", message);
         return false;
       }
 
-      const message = error instanceof Error ? error.message : "Hand tracking could not start.";
+      const message = (error instanceof Error && startupErrorMessages.get(error.message)) ||
+        "No se pudo iniciar la detección de manos. Comprueba la cámara y la conexión a internet e inténtalo de nuevo.";
       console.error("Hand tracking could not start.", error);
       this.setStatus(
         "error",

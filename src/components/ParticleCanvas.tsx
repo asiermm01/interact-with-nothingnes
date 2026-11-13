@@ -46,9 +46,7 @@ export default function ParticleCanvas({
       })
       .catch((error: unknown) => {
         console.error("The visual engine failed to start.", error);
-        callbacksRef.current.onError(
-          error instanceof Error ? error.message : "The visual engine failed to start.",
-        );
+        callbacksRef.current.onError("No se pudo iniciar el entorno visual.");
       });
 
     return () => {

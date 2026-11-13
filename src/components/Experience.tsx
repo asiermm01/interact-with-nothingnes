@@ -52,34 +52,34 @@ const initialInteraction: InteractionFrame = {
 };
 
 const gestureLabels: Record<GestureName, string> = {
-  IDLE: "Move to disturb the field",
-  CURSOR: "CURSOR · Extend one finger to position without disturbing the field",
-  TRACE: "TRACE · Extend two fingers to draw persistent strokes",
-  GRAVITY: "GRAVITY · Close one hand into a fist to attract particles",
-  STRETCH: "STRETCH · Open both palms and move them apart or together",
-  COLLAPSE: "COLLAPSE · Pinch thumb and index while extending the other three fingers",
-  "CLEAR ALL": "CLEAR ALL · Hold both thumbs extended",
+  IDLE: "Muévete para agitar el campo",
+  CURSOR: "CURSOR · Extiende un dedo para mover el cursor sin alterar el campo",
+  TRACE: "TRACE · Extiende dos dedos para dibujar trazos persistentes",
+  GRAVITY: "GRAVITY · Cierra el puño para atraer partículas",
+  STRETCH: "STRETCH · Abre las palmas y acércalas o aléjalas",
+  COLLAPSE: "COLLAPSE · Une pulgar e índice y extiende los otros tres dedos",
+  "CLEAR ALL": "CLEAR ALL · Mantén ambos pulgares extendidos",
 };
 
 const gestureLegend = [
-  { name: "CURSOR", cue: "1 FINGER", symbol: "☝️", description: "Move the cursor without affecting particles or drawings." },
-  { name: "TRACE", cue: "2 FINGERS", symbol: "✌️", description: "Draw persistent strokes with the two-finger brush." },
-  { name: "GRAVITY", cue: "CLOSED FIST", symbol: "✊", description: "Attract nearby particles toward the center of that hand." },
-  { name: "STRETCH", cue: "2 OPEN PALMS", symbol: "🙌", description: "Move both open palms to scale and rotate the particle field." },
-  { name: "COLLAPSE", cue: "OK SIGN", symbol: "👌", description: "Pinch thumb to index while extending the middle, ring, and pinky fingers." },
-  { name: "CLEAR ALL", cue: "THUMBS ONLY · HOLD", symbol: "👍👍", description: "Extend only the thumb on each hand and hold to erase all persistent TRACE strokes." },
+  { name: "CURSOR", cue: "1 DEDO", symbol: "☝️", description: "Mueve el cursor sin afectar a las partículas ni a los dibujos." },
+  { name: "TRACE", cue: "2 DEDOS", symbol: "✌️", description: "Dibuja trazos persistentes con dos dedos." },
+  { name: "GRAVITY", cue: "PUÑO CERRADO", symbol: "✊", description: "Atrae las partículas cercanas hacia el centro de la mano." },
+  { name: "STRETCH", cue: "2 PALMAS ABIERTAS", symbol: "🙌", description: "Mueve las dos palmas abiertas para ampliar y girar el campo." },
+  { name: "COLLAPSE", cue: "PINZA ÍNDICE-PULGAR", symbol: "👌", description: "Une pulgar e índice y extiende los dedos medio, anular y meñique." },
+  { name: "CLEAR ALL", cue: "SOLO PULGARES · MANTÉN", symbol: "👍👍", description: "Extiende solo los pulgares y mantén el gesto para borrar todos los trazos de TRACE." },
 ] as const;
 
 const statusLabels: Record<TrackingStatus, string> = {
-  idle: "MOUSE FIELD",
-  requesting: "REQUESTING CAMERA",
-  "loading-model": "LOADING HANDPOSE",
-  tracking: "HANDS PRESENT",
-  searching: "SEARCHING FOR HANDS",
-  "no-hands": "NO HANDS DETECTED",
-  denied: "CAMERA DECLINED",
-  unavailable: "CAMERA UNAVAILABLE",
-  error: "TRACKING ERROR",
+  idle: "MODO RATÓN",
+  requesting: "SOLICITANDO CÁMARA",
+  "loading-model": "CARGANDO DETECCIÓN",
+  tracking: "MANOS DETECTADAS",
+  searching: "BUSCANDO MANOS",
+  "no-hands": "SIN MANOS DETECTADAS",
+  denied: "CÁMARA DENEGADA",
+  unavailable: "CÁMARA NO DISPONIBLE",
+  error: "ERROR DE DETECCIÓN",
 };
 
 export default function Experience() {
@@ -111,7 +111,7 @@ export default function Experience() {
   const [isInterfaceVisible, setIsInterfaceVisible] = useState(true);
   const [hint, setHint] = useState("");
   const [handStatuses, setHandStatuses] = useState(() => getHandStatuses([]));
-  const [handSummary, setHandSummary] = useState("NO HANDS DETECTED");
+  const [handSummary, setHandSummary] = useState("SIN MANOS DETECTADAS");
   const [clearProgress, setClearProgress] = useState(0);
   const handStatusesRef = useRef(handStatuses);
   const handSummaryRef = useRef("");
@@ -164,7 +164,7 @@ export default function Experience() {
     }
     if (frame.clearVersion !== lastClearVersionRef.current) {
       lastClearVersionRef.current = frame.clearVersion;
-      setHint("TRACE FIELD CLEARED");
+      setHint("TRAZOS DE TRACE BORRADOS");
     }
     if (frame.clearActive) {
       const now = performance.now();
@@ -183,12 +183,12 @@ export default function Experience() {
     }
     const nextSummary =
       frame.hands.length === 0
-        ? "NO HANDS DETECTED"
+        ? "SIN MANOS DETECTADAS"
         : frame.hands
             .map((hand) =>
               hand.handedness === "Unknown"
-                ? `HAND ${hand.id.replace("hand-", "")}`
-                : `${hand.handedness.toUpperCase()} HAND`,
+                ? `MANO ${hand.id.replace("hand-", "")}`
+                : hand.handedness === "Left" ? "MANO IZQUIERDA" : "MANO DERECHA",
             )
             .sort()
             .join(" + ");
@@ -212,8 +212,8 @@ export default function Experience() {
       trackerRef.current = null;
       resetTrackingFrame();
       lastGestureRef.current = "IDLE";
-      handSummaryRef.current = "NO HANDS DETECTED";
-      setHandSummary("NO HANDS DETECTED");
+      handSummaryRef.current = "SIN MANOS DETECTADAS";
+      setHandSummary("SIN MANOS DETECTADAS");
       handStatusesRef.current = getHandStatuses([]);
       setHandStatuses(handStatusesRef.current);
       clearProgressRef.current = 0;
@@ -236,8 +236,8 @@ export default function Experience() {
       console.info("[WEBCAM] Tracking is already starting or active.");
       return;
     }
-    handSummaryRef.current = "NO HANDS DETECTED";
-    setHandSummary("NO HANDS DETECTED");
+    handSummaryRef.current = "SIN MANOS DETECTADAS";
+    setHandSummary("SIN MANOS DETECTADAS");
     const tracker = new HandTracker(video, updateHands, updateTrackingStatus);
     trackerRef.current = tracker;
     const started = await tracker.start();
@@ -249,12 +249,12 @@ export default function Experience() {
     trackerRef.current = null;
     resetTrackingFrame();
     lastGestureRef.current = "IDLE";
-    handSummaryRef.current = "NO HANDS DETECTED";
+    handSummaryRef.current = "SIN MANOS DETECTADAS";
     setIsTracking(false);
     setTrackingStatus("idle");
     setStatusMessage("");
     setActiveGesture("IDLE");
-    setHandSummary("NO HANDS DETECTED");
+    setHandSummary("SIN MANOS DETECTADAS");
     handStatusesRef.current = getHandStatuses([]);
     setHandStatuses(handStatusesRef.current);
     clearProgressRef.current = 0;
@@ -291,7 +291,7 @@ export default function Experience() {
     lastClearVersionRef.current = cleared.clearVersion;
     clearProgressRef.current = 0;
     setClearProgress(0);
-    setHint("TRACE FIELD CLEARED");
+    setHint("TRAZOS DE TRACE BORRADOS");
   };
 
   const renderTuningSlider = (
@@ -375,7 +375,8 @@ export default function Experience() {
       if (document.fullscreenElement) await document.exitFullscreen();
       else await rootRef.current?.requestFullscreen();
     } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : "Fullscreen is unavailable.");
+      console.error("Fullscreen is unavailable.", error);
+      setStatusMessage("No se pudo activar la pantalla completa.");
     }
   };
 
@@ -434,7 +435,7 @@ export default function Experience() {
     if (isPaused) engineRef.current?.resume();
     else engineRef.current?.pause();
     setIsPaused((paused) => !paused);
-    setHint(isPaused ? "The field resumes." : "The field is still.");
+    setHint(isPaused ? "El campo vuelve a moverse." : "El campo está en pausa.");
   };
 
   const setMode = (mode: VisualMode) => changeSetting("mode", mode);
@@ -456,14 +457,14 @@ export default function Experience() {
       />
 
       <figure
-        aria-label="Live camera preview for local hand tracking"
+        aria-label="Vista de la cámara para detectar las manos en este dispositivo"
         className="camera-preview"
         data-active={hasCameraImage}
         data-visible={isInterfaceVisible}
       >
         <div className="camera-window">
           <video
-            aria-label="Mirrored live camera image used for hand tracking"
+            aria-label="Imagen reflejada de la cámara para detectar las manos"
             autoPlay
             className="camera-feed"
             muted
@@ -472,26 +473,26 @@ export default function Experience() {
           />
           {!hasCameraImage && (
             <span className="camera-placeholder">
-              {trackingStatus === "requesting" ? "CONNECTING" : "CAMERA OFF"}
+              {trackingStatus === "requesting" ? "CONECTANDO" : "CÁMARA APAGADA"}
             </span>
           )}
-          <span className="camera-caption">{hasCameraImage ? "LIVE INPUT · LOCAL ONLY" : "CAMERA PREVIEW"}</span>
+          <span className="camera-caption">{hasCameraImage ? "EN DIRECTO · SOLO EN ESTE DISPOSITIVO" : "VISTA DE CÁMARA"}</span>
         </div>
         <figcaption aria-live="polite" className="hand-status">
-          <span>LEFT HAND — {handStatuses.left}</span>
-          <span>RIGHT HAND — {handStatuses.right}</span>
+          <span>MANO IZQUIERDA — {handStatuses.left}</span>
+          <span>MANO DERECHA — {handStatuses.right}</span>
         </figcaption>
       </figure>
 
       {!isInterfaceVisible && (
         <button
-          aria-label="Show interface"
+          aria-label="Mostrar interfaz"
           className="interface-reveal"
           data-ui
           onClick={() => setIsInterfaceVisible(true)}
           type="button"
         >
-          + UI
+          + INTERFAZ
         </button>
       )}
 
@@ -503,11 +504,11 @@ export default function Experience() {
             </span>
             <div>
               <p>ONE WITH NOTHINGNESS</p>
-              <span>FIELD STUDY &nbsp; / &nbsp; 001</span>
+              <span>ESTUDIO DE CAMPO &nbsp; / &nbsp; 001</span>
             </div>
           </header>
 
-          <section aria-label="Tracking status" className="tracking">
+          <section aria-label="Estado de detección" className="tracking">
             <span className={`tracking-light is-${trackingStatus}`} />
             <div>
               <p>{statusLabels[trackingStatus]}</p>
@@ -515,10 +516,10 @@ export default function Experience() {
                 {trackingStatus === "tracking"
                   ? handSummary
                   : isTracking
-                    ? "LOCAL PROCESSING"
+                    ? "PROCESAMIENTO LOCAL"
                   : trackingStatus === "no-hands"
-                    ? "FULL HAND IN FRAME · PALM TO CAMERA"
-                    : "MOVE TO INTERACT"}
+                    ? "MANO COMPLETA · PALMA HACIA LA CÁMARA"
+                    : "MUÉVETE PARA INTERACTUAR"}
               </span>
             </div>
             <button
@@ -526,7 +527,7 @@ export default function Experience() {
               onClick={isTracking ? stopTracking : startTracking}
               type="button"
             >
-              {isTracking ? "DISCONNECT" : "ENABLE HANDS"}
+              {isTracking ? "DESCONECTAR" : "ACTIVAR MANOS"}
             </button>
             <button
               aria-controls="gesture-legend-panel"
@@ -534,10 +535,10 @@ export default function Experience() {
               className="tracking-toggle gesture-legend-toggle"
               onClick={() => setIsGestureLegendOpen((open) => !open)}
               ref={gestureLegendTriggerRef}
-              title={isGestureLegendOpen ? "Close gesture legend" : "Open gesture legend"}
+              title={isGestureLegendOpen ? "Cerrar guía de gestos" : "Abrir guía de gestos"}
               type="button"
             >
-              GESTURES
+              GESTOS
             </button>
             <section
               aria-labelledby="gesture-legend-title"
@@ -548,11 +549,11 @@ export default function Experience() {
             >
               <div className="gesture-legend-heading">
                 <div>
-                  <span>INTERACTION KEY</span>
-                  <h2 id="gesture-legend-title">Ways of touching the field</h2>
+                  <span>GUÍA DE INTERACCIÓN</span>
+                  <h2 id="gesture-legend-title">Formas de tocar el campo</h2>
                 </div>
                 <button
-                  aria-label="Close gesture legend"
+                  aria-label="Cerrar guía de gestos"
                   className="icon-button"
                   ref={gestureLegendCloseRef}
                   onClick={() => {
@@ -589,12 +590,12 @@ export default function Experience() {
             <span className="readout-line" />
             <p>
               {activeGesture === "CLEAR ALL" && clearProgress > 0
-                ? `CLEAR ALL · HOLD ${Math.round(clearProgress * 100)}%`
+                ? `CLEAR ALL · MANTÉN ${Math.round(clearProgress * 100)}%`
                 : gestureLabels[activeGesture]}
             </p>
             {activeGesture === "CLEAR ALL" && (
               <span
-                aria-label={`Clear all progress ${Math.round(clearProgress * 100)} percent`}
+                aria-label={`Progreso de CLEAR ALL: ${Math.round(clearProgress * 100)} por ciento`}
                 className="clear-progress-track"
               >
                 <span style={{ width: `${clearProgress * 100}%` }} />
@@ -609,17 +610,17 @@ export default function Experience() {
           )}
 
           <aside
-            aria-label="Experience controls"
+            aria-label="Controles de la experiencia"
             className={`control-panel ${isPanelOpen ? "is-open" : ""}`}
             ref={panelRef}
           >
             <div className="panel-heading">
               <div>
-                <span>FIELD PARAMETERS</span>
-                <h2>Adjust the medium</h2>
+                <span>PARÁMETROS DEL CAMPO</span>
+                <h2>Ajusta el entorno</h2>
               </div>
               <button
-                aria-label="Close controls"
+                aria-label="Cerrar controles"
                 className="icon-button panel-close"
                 onClick={togglePanel}
                 type="button"
@@ -629,7 +630,7 @@ export default function Experience() {
             </div>
 
             <label className="slider-control">
-              <span>PARTICLE DENSITY <output>{settings.density}</output></span>
+              <span>DENSIDAD DE PARTÍCULAS <output>{settings.density}</output></span>
               <input
                 max={INTERACTION_CONFIG.particles.maximumCount}
                 min={INTERACTION_CONFIG.particles.minimumCount}
@@ -641,7 +642,7 @@ export default function Experience() {
             </label>
 
             <label className="slider-control">
-              <span>FORCE INTENSITY <output>{settings.intensity}%</output></span>
+              <span>INTENSIDAD DE LA FUERZA <output>{settings.intensity}%</output></span>
               <input
                 max="100"
                 min="10"
@@ -652,7 +653,7 @@ export default function Experience() {
             </label>
 
             <label className="slider-control">
-              <span>TRAIL INTENSITY <output>{settings.persistence}%</output></span>
+              <span>INTENSIDAD DE LA ESTELA <output>{settings.persistence}%</output></span>
               <input
                 max="96"
                 min="20"
@@ -662,43 +663,43 @@ export default function Experience() {
               />
             </label>
 
-            <p className="panel-section-label">HAND INTERACTION</p>
-            {renderTuningSlider("confidenceThreshold", "HAND CONFIDENCE", (value) =>
+            <p className="panel-section-label">INTERACCIÓN CON LAS MANOS</p>
+            {renderTuningSlider("confidenceThreshold", "CONFIANZA DE DETECCIÓN", (value) =>
               `${Math.round(value * 100)}%`,
             )}
-            {renderTuningSlider("smoothing", "POSITION SMOOTHING")}
-            {renderTuningSlider("pinchEnterRatio", "PINCH SENSITIVITY")}
-            {renderTuningSlider("pinchExitRatio", "PINCH RELEASE")}
-            {renderTuningSlider("fingerExtensionRatio", "FINGER EXTENSION")}
-            {renderTuningSlider("gestureHoldMs", "GESTURE HOLD", (value) =>
+            {renderTuningSlider("smoothing", "SUAVIZADO DE POSICIÓN")}
+            {renderTuningSlider("pinchEnterRatio", "SENSIBILIDAD DE PINZA")}
+            {renderTuningSlider("pinchExitRatio", "LIBERACIÓN DE PINZA")}
+            {renderTuningSlider("fingerExtensionRatio", "EXTENSIÓN DE LOS DEDOS")}
+            {renderTuningSlider("gestureHoldMs", "DURACIÓN DEL GESTO", (value) =>
               `${Math.round(value)} ms`,
             )}
-            {renderTuningSlider("forceMultiplier", "HAND FORCE")}
-            {renderTuningSlider("gravityStrength", "GRAVITY STRENGTH", (value) =>
+            {renderTuningSlider("forceMultiplier", "FUERZA DE LA MANO")}
+            {renderTuningSlider("gravityStrength", "FUERZA DE GRAVITY", (value) =>
               `${Math.round(value)} px/s²`,
             )}
-            {renderTuningSlider("stretchSensitivity", "STRETCH SENSITIVITY")}
-            {renderTuningSlider("traceSpacing", "TRACE DENSITY", (value) =>
-              `${(1 / value).toFixed(0)} pts/unit`,
+            {renderTuningSlider("stretchSensitivity", "SENSIBILIDAD DE STRETCH")}
+            {renderTuningSlider("traceSpacing", "DENSIDAD DE TRACE", (value) =>
+              `${(1 / value).toFixed(0)} pts/unidad`,
             )}
-            {renderTuningSlider("traceThickness", "TRACE THICKNESS", (value) =>
+            {renderTuningSlider("traceThickness", "GROSOR DE TRACE", (value) =>
               `${value.toFixed(1)} px`,
             )}
-            {renderTuningSlider("traceGlow", "TRACE GLOW", (value) =>
+            {renderTuningSlider("traceGlow", "RESPLANDOR DE TRACE", (value) =>
               `${Math.round(value)} px`,
             )}
-            {renderTuningSlider("traceOpacity", "TRACE OPACITY", (value) =>
+            {renderTuningSlider("traceOpacity", "OPACIDAD DE TRACE", (value) =>
               `${Math.round(value * 100)}%`,
             )}
-            {renderTuningSlider("clearHoldMs", "CLEAR ALL HOLD", (value) =>
+            {renderTuningSlider("clearHoldMs", "DURACIÓN DE CLEAR ALL", (value) =>
               `${Math.round(value)} ms`,
             )}
-            {renderTuningSlider("clearCooldownMs", "CLEAR ALL COOLDOWN", (value) =>
+            {renderTuningSlider("clearCooldownMs", "ESPERA DE CLEAR ALL", (value) =>
               `${(value / 1000).toFixed(1)} s`,
             )}
 
             <fieldset className="mode-control">
-              <legend>VISUAL MODE</legend>
+              <legend>MODO VISUAL</legend>
               {(["nebula", "filament", "monochrome"] as const).map((mode) => (
                 <button
                   aria-pressed={settings.mode === mode}
@@ -707,26 +708,26 @@ export default function Experience() {
                   onClick={() => setMode(mode)}
                   type="button"
                 >
-                  {mode}
+                  {{ nebula: "NEBULOSA", filament: "FILAMENTO", monochrome: "MONOCROMO" }[mode]}
                 </button>
               ))}
             </fieldset>
 
-            <p className="panel-note">Camera inference stays on this device.</p>
+            <p className="panel-note">La imagen de la cámara se procesa en este dispositivo.</p>
           </aside>
 
-          <nav aria-label="Experience actions" className="toolbar">
+          <nav aria-label="Acciones de la experiencia" className="toolbar">
             <button
               aria-expanded={isPanelOpen}
               className="toolbar-button settings-button"
               onClick={togglePanel}
               type="button"
             >
-              <span aria-hidden="true">⌘</span> PARAMETERS
+              <span aria-hidden="true">⌘</span> PARÁMETROS
             </button>
             <span className="toolbar-divider" />
             <button
-              aria-label={isPaused ? "Resume" : "Pause"}
+              aria-label={isPaused ? "Reanudar" : "Pausar"}
               className="icon-button"
               onClick={togglePause}
               type="button"
@@ -735,7 +736,7 @@ export default function Experience() {
             </button>
             <button
               className="icon-button"
-              aria-label="Reset universe"
+              aria-label="Restablecer universo"
               onClick={() => {
                 engineRef.current?.reset();
                 recognizerRef.current.resetTransform();
@@ -745,23 +746,23 @@ export default function Experience() {
                   universeRotation: 0,
                 };
                 clearTraceDrawings();
-                setHint("The field and drawings return to their first state.");
+                setHint("El campo y los dibujos vuelven a su estado inicial.");
               }}
-              title="Reset universe"
+              title="Restablecer universo"
               type="button"
             >
               ↺
             </button>
             <button
               className="icon-button"
-              aria-label="Capture image"
+              aria-label="Capturar imagen"
               onClick={() => engineRef.current?.capture()}
               type="button"
             >
               ↓
             </button>
             <button
-              aria-label="Toggle fullscreen"
+              aria-label="Alternar pantalla completa"
               className="icon-button"
               onClick={toggleFullscreen}
               type="button"
@@ -770,17 +771,17 @@ export default function Experience() {
             </button>
             <button
               className="icon-button hide-button"
-              aria-label="Hide interface"
+              aria-label="Ocultar interfaz"
               onClick={() => setIsInterfaceVisible(false)}
               type="button"
             >
-              − UI
+              − INTERFAZ
             </button>
           </nav>
 
           <footer className="interface-footer">
-            <span>MOVE · SHAPE · RELEASE</span>
-            <span>ESCAPE TO RETURN</span>
+            <span>MUÉVETE · DA FORMA · SUELTA</span>
+            <span>ESC PARA VOLVER</span>
           </footer>
         </div>
       )}

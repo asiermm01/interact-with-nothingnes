@@ -3,9 +3,9 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "ONE WITH NOTHINGNESS — Field Study 001",
+  title: "ONE WITH NOTHINGNESS — Estudio de campo 001",
   description:
-    "An interactive generative particle universe. Move with the field, or invite your hands to shape it.",
+    "Un universo interactivo de partículas. Muévete con el campo o dale forma con las manos.",
   applicationName: "ONE WITH NOTHINGNESS",
   appleWebApp: {
     capable: true,
@@ -20,7 +20,7 @@ export default function RootLayout({
   children: ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="es">
       <body>{children}</body>
     </html>
   );

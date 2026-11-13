@@ -131,15 +131,15 @@ test("particle density is bounded and rejects invalid values", () => {
 
 test("hand statuses reflect each hand's active interaction independently", () => {
   const { tick, pair } = harness();
-  assert.deepEqual(getHandStatuses([]), { left: "NOT DETECTED", right: "NOT DETECTED" });
+  assert.deepEqual(getHandStatuses([]), { left: "NO DETECTADA", right: "NO DETECTADA" });
   let frame = tick([hand(0.3, 0.5, "Left", ["index"]), hand(0.7, 0.5, "Right", ["index", "middle"])]);
   assert.deepEqual(getHandStatuses(frame.hands), { left: "CURSOR", right: "TRACE" });
   frame = tick([hand(0.3, 0.5, "Left", ["index", "middle", "ring"])], 10);
-  assert.deepEqual(getHandStatuses(frame.hands), { left: "IDLE", right: "NOT DETECTED" });
+  assert.deepEqual(getHandStatuses(frame.hands), { left: "EN REPOSO", right: "NO DETECTADA" });
   frame = tick(pair(0.3, 0.7), 10);
   assert.deepEqual(getHandStatuses(frame.hands), { left: "STRETCH", right: "STRETCH" });
   assert.deepEqual(getHandStatuses([{ handedness: "Unknown", interaction: "trace" }]),
-    { left: "NOT IDENTIFIED", right: "NOT IDENTIFIED" });
+    { left: "SIN IDENTIFICAR", right: "SIN IDENTIFICAR" });
 });
 
 test("particle colors hold independently and transition smoothly without frame-by-frame randomness", () => {
